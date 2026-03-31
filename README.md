@@ -147,48 +147,9 @@ Creates a `Memory` instance. Automatically starts the server if no `serverUrl` i
 | `reset()` | Delete all memories |
 | `close()` | Close the connection and stop the server subprocess |
 
-## Error handling
+## Docs
 
-The SDK provides typed error classes:
-
-```typescript
-import { PowerMemError, PowerMemInitError, PowerMemStartupError,
-         PowerMemConnectionError, PowerMemAPIError } from 'powermem-ts';
-
-try {
-  await memory.add('test');
-} catch (err) {
-  if (err instanceof PowerMemAPIError) {
-    console.error(`API error ${err.statusCode}: ${err.message}`);
-  } else if (err instanceof PowerMemConnectionError) {
-    console.error('Server unreachable:', err.message);
-  }
-}
-```
-
-| Error class | Code | When |
-|-------------|------|------|
-| `PowerMemInitError` | `INIT_ERROR` | Python env setup failed |
-| `PowerMemStartupError` | `STARTUP_ERROR` | Server did not start within timeout |
-| `PowerMemConnectionError` | `CONNECTION_ERROR` | Cannot reach the server |
-| `PowerMemAPIError` | `API_ERROR` | Server returned an error response |
-
-## Project structure
-
-```
-powermem-ts/
-├── src/
-│   ├── index.ts              # Public exports
-│   ├── memory.ts             # Memory facade (main entry)
-│   ├── types/                # TypeScript type definitions
-│   ├── errors/               # Error classes
-│   ├── provider/             # MemoryProvider interface + HTTP implementation
-│   ├── server/               # Python env manager + server process manager
-│   └── utils/                # Platform helpers, case conversion, env loader
-└── examples/
-    ├── basic-usage.ts        # Auto-start mode
-    └── with-existing-server.ts  # Direct connect mode
-```
+- [Architecture](docs/architecture.md) — design, project structure, flows, and error handling
 
 ## Related
 
