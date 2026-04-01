@@ -1,13 +1,19 @@
 import { Memory } from '../src/index.js';
 
-// 首次使用：初始化 Python 环境 + 安装 powermem（幂等，重复调用自动跳过）
-await Memory.init();
-
-// 创建实例，自动启动内部 powermem-server
+// 方式 1: 从 .env 环境变量自动创建（需要 EMBEDDING_PROVIDER/API_KEY/MODEL 等配置）
 const memory = await Memory.create();
 
-// 添加记忆
-const result = await memory.add('用户喜欢咖啡', { userId: 'user123' });
+// 方式 2: 显式传入 LangChain 实例
+// import { OpenAIEmbeddings, ChatOpenAI } from '@langchain/openai';
+// const memory = await Memory.create({
+//   embeddings: new OpenAIEmbeddings({ model: 'text-embedding-3-small' }),
+//   llm: new ChatOpenAI({ model: 'gpt-4o-mini' }),
+// });
+
+// 添加记忆（infer=true 默认，LLM 自动提取事实）
+const result = await memory.add('用户喜欢咖啡，住在上海，是一名软件工程师', {
+  userId: 'user123',
+});
 console.log('Added:', result.memories);
 
 // 搜索
@@ -26,9 +32,9 @@ console.log('Total memories:', all.total);
 
 // 批量添加
 await memory.addBatch(
-  [{ content: '喜欢喝拿铁' }, { content: '住在上海' }],
+  [{ content: '喜欢喝拿铁' }, { content: '住在浦东' }],
   { userId: 'user123' }
 );
 
-// 用完释放（kill server 子进程）
+// 用完释放
 await memory.close();

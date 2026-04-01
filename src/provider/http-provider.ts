@@ -130,6 +130,13 @@ export class HttpProvider implements MemoryProvider {
     return true;
   }
 
+  async count(params: FilterParams = {}): Promise<number> {
+    const query: Record<string, string> = {};
+    if (params.userId) query['user_id'] = params.userId;
+    if (params.agentId) query['agent_id'] = params.agentId;
+    return this.request<number>('GET', '/api/v1/memories/count', undefined, query);
+  }
+
   async reset(): Promise<void> {
     await this.deleteAll();
   }

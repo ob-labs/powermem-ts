@@ -8,6 +8,9 @@ export interface MemoryRecord {
   metadata?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
+  scope?: string;
+  category?: string;
+  accessCount?: number;
 }
 
 export interface AddParams {
@@ -18,6 +21,8 @@ export interface AddParams {
   metadata?: Record<string, unknown>;
   filters?: Record<string, unknown>;
   infer?: boolean;
+  scope?: string;
+  category?: string;
 }
 
 export interface SearchParams {
@@ -27,6 +32,7 @@ export interface SearchParams {
   runId?: string;
   filters?: Record<string, unknown>;
   limit?: number;
+  threshold?: number;
 }
 
 export interface UpdateParams {
@@ -39,6 +45,8 @@ export interface GetAllParams {
   agentId?: string;
   limit?: number;
   offset?: number;
+  sortBy?: string;
+  order?: 'asc' | 'desc';
 }
 
 export interface FilterParams {
@@ -49,6 +57,8 @@ export interface FilterParams {
 export interface BatchItem {
   content: string;
   metadata?: Record<string, unknown>;
+  scope?: string;
+  category?: string;
 }
 
 export interface BatchOptions {
@@ -56,4 +66,6 @@ export interface BatchOptions {
   agentId?: string;
   runId?: string;
   infer?: boolean;
+  scope?: string;
+  category?: string;
 }

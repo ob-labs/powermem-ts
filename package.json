@@ -1,6 +1,6 @@
 {
   "name": "powermem-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript SDK for PowerMem",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -23,16 +23,43 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run --exclude tests/e2e-*",
+    "test:watch": "vitest --exclude tests/e2e-*",
+    "test:e2e": "vitest run tests/e2e-ollama.test.ts",
+    "test:all": "vitest run"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.38",
+    "better-sqlite3": "^12.8.0",
     "dotenv": "^16.0.0"
   },
   "devDependencies": {
+    "@langchain/ollama": "^1.2.6",
+    "@langchain/openai": "^1.4.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.2"
+  },
+  "peerDependencies": {
+    "@langchain/anthropic": ">=0.3.0",
+    "@langchain/ollama": ">=0.2.0",
+    "@langchain/openai": ">=0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/openai": {
+      "optional": true
+    },
+    "@langchain/anthropic": {
+      "optional": true
+    },
+    "@langchain/ollama": {
+      "optional": true
+    }
   }
 }

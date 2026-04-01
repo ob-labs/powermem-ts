@@ -18,6 +18,7 @@ export interface MemoryProvider {
   delete(memoryId: string): Promise<boolean>;
   getAll(params?: GetAllParams): Promise<MemoryListResult>;
   addBatch(memories: BatchItem[], options?: BatchOptions): Promise<AddResult>;
+  count(params?: FilterParams): Promise<number>;
   deleteAll(params?: FilterParams): Promise<boolean>;
   reset(): Promise<void>;
   close(): Promise<void>;

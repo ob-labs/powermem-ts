@@ -234,6 +234,7 @@ node_modules/
 package-lock.json
 *.tsbuildinfo
 dist/
+coverage/
 
 # Claude Code
 .claude/
