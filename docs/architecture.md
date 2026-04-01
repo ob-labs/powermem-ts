@@ -98,11 +98,13 @@ powermem-ts/
 │   │   ├── http-provider.ts        # HTTP implementation (backward compat)
 │   │   └── native/
 │   │       ├── index.ts            # NativeProvider (main class)
-│   │       ├── store.ts            # SQLite storage layer
+│   │       ├── vector-store.ts     # VectorStore interface (abstract)
+│   │       ├── store.ts            # SQLiteStore (VectorStore implementation)
 │   │       ├── embedder.ts         # LangChain Embeddings wrapper
 │   │       ├── inferrer.ts         # LLM fact extraction + action decision
 │   │       ├── prompts.ts          # LLM prompt templates (from Python)
 │   │       ├── search.ts           # Cosine similarity
+│   │       ├── decay.ts            # Ebbinghaus memory decay
 │   │       ├── snowflake.ts        # Snowflake ID generator
 │   │       └── provider-factory.ts # Env-based auto-creation
 │   ├── server/                     # (Legacy) Python server management
@@ -114,15 +116,24 @@ powermem-ts/
 │       └── env.ts                  # .env file loader
 ├── tests/
 │   ├── mocks.ts                    # MockEmbeddings, MockLLM
-│   ├── snowflake.test.ts
-│   ├── search.test.ts
-│   ├── store.test.ts
-│   ├── embedder.test.ts
-│   ├── inferrer.test.ts
-│   ├── native-provider.test.ts
-│   ├── memory-facade.test.ts
-│   ├── provider-factory.test.ts
-│   └── coverage-gaps.test.ts
+│   ├── snowflake.test.ts           # Unit: ID generation
+│   ├── search.test.ts              # Unit: cosine similarity
+│   ├── store.test.ts               # Unit: SQLiteStore CRUD + sort + count
+│   ├── decay.test.ts               # Unit: Ebbinghaus decay math
+│   ├── embedder.test.ts            # Unit: embedding wrapper
+│   ├── inferrer.test.ts            # Unit: LLM extraction + custom prompts
+│   ├── native-provider.test.ts     # Integration: full provider
+│   ├── memory-facade.test.ts       # Integration: public API
+│   ├── provider-factory.test.ts    # Unit: env-based factory
+│   ├── coverage-gaps.test.ts       # Integration: edge cases
+│   ├── sorting-combos.test.ts      # Combinatorial: sortBy × order × pagination
+│   ├── edge-cases.test.ts          # Boundary: invalid IDs, empty stores, limits
+│   ├── multi-agent.test.ts         # Concurrency + isolation
+│   ├── custom-integration.test.ts  # Custom prompts, reranker, fallback
+│   ├── ebbinghaus.test.ts          # Decay: curve, reinforcement, ordering
+│   ├── multi-language.test.ts      # I18n: CJK, Arabic, emoji, unicode
+│   ├── e2e-ollama.test.ts          # E2E: all features with real Ollama
+│   └── e2e-agent-scenario.test.ts  # E2E: real-world agent scenarios
 └── examples/
     └── basic-usage.ts
 ```
@@ -320,57 +331,54 @@ Dual-format via `tsup`:
 
 ## 11. Test architecture
 
-113 tests total: **95 unit tests** (mocked, fast) + **18 e2e tests** (real Ollama models).
+208 tests total: **187 unit tests** (mocked, fast) + **21 e2e tests** (real Ollama models).
 
-### Unit tests
+Tests are organized by 6 testing perspectives (learned from the Python powermem test suite):
 
-9 files using **vitest** with mock LangChain instances:
+### Unit tests (187 tests, 16 files)
 
+Mock infrastructure:
 - `MockEmbeddings` — Deterministic vectors from character frequency (no API calls)
 - `MockLLM` — Pre-configured response queue with call tracking
 
-Coverage: **95% lines, 83% branches, 98.5% functions**.
+| Test file | Tests | Perspective |
+|-----------|-------|-------------|
+| `snowflake.test.ts` | 4 | Unit — ID generation |
+| `search.test.ts` | 6 | Unit — Cosine similarity |
+| `store.test.ts` | 25 | Unit — SQLiteStore CRUD, count, sort, access count |
+| `embedder.test.ts` | 4 | Unit — Embedding wrapper |
+| `inferrer.test.ts` | 11 | Unit — LLM fact extraction, actions, custom prompts |
+| `decay.test.ts` | 8 | Unit — Ebbinghaus decay math |
+| `native-provider.test.ts` | 41 | Integration — Full provider, all features |
+| `memory-facade.test.ts` | 8 | Integration — Public API through facade |
+| `provider-factory.test.ts` | 9 | Unit — Env-based factory |
+| `coverage-gaps.test.ts` | 14 | Integration — Edge cases, filter branches |
+| `sorting-combos.test.ts` | 11 | **Combinatorial** — sortBy × order × pagination 3D combos |
+| `edge-cases.test.ts` | 22 | **Boundary** — Invalid IDs, empty stores, idempotent ops, long content |
+| `multi-agent.test.ts` | 6 | **Concurrency + Isolation** — Parallel writes, agent data isolation |
+| `custom-integration.test.ts` | 8 | **Custom integration** — All customization points together |
+| `ebbinghaus.test.ts` | 9 | **Decay math** — Exponential curve, reinforcement, search ordering |
+| `multi-language.test.ts` | 8 | **Multi-language** — CJK, Japanese, Arabic, emoji, unicode metadata |
 
-| Test file | Tests | Layer |
-|-----------|-------|-------|
-| `snowflake.test.ts` | 4 | ID generation |
-| `search.test.ts` | 6 | Cosine similarity |
-| `store.test.ts` | 14 | SQLite CRUD + vector search |
-| `embedder.test.ts` | 4 | Embedding wrapper |
-| `inferrer.test.ts` | 9 | LLM fact extraction + actions |
-| `native-provider.test.ts` | 28 | Full integration |
-| `memory-facade.test.ts` | 7 | Public API end-to-end |
-| `provider-factory.test.ts` | 9 | Env-based factory |
-| `coverage-gaps.test.ts` | 14 | Edge cases + filter branches |
+### E2E tests with real models (21 tests, 2 files)
 
-### E2E tests with real models
+Models: `qwen2.5:0.5b` (LLM) + `nomic-embed-text` (embedding). Auto-skipped when Ollama unavailable.
 
-`e2e-ollama.test.ts` — 18 tests using local Ollama models:
-- **LLM**: `qwen2.5:0.5b` (397 MB) — fact extraction + memory action decisions
-- **Embedding**: `nomic-embed-text` (274 MB, 768-dim vectors)
+| Test file | Tests | Scenario |
+|-----------|-------|----------|
+| `e2e-ollama.test.ts` | 18 | Full feature verification with real embeddings and LLM |
+| `e2e-agent-scenario.test.ts` | 3 | **Scenario-based** — Personal assistant, 10-round conversation, multi-agent isolation |
 
-Auto-skipped when Ollama is not available.
+### Testing perspectives
 
-| Test | Design purpose verified |
-|------|------------------------|
-| Embedding produces vectors | Real model returns valid number arrays |
-| Similar texts → similar vectors | Semantic similarity works (coffee > weather) |
-| Add + retrieve | SQLite storage round-trip with real embeddings |
-| Semantic search ranks correctly | Coffee memories ranked top for "coffee preferences" |
-| Search limit respected | Limit=2 returns ≤2 results |
-| userId filter isolation | Filtered search returns only matching user |
-| Infer: fact extraction | Real LLM extracts facts → embeds → stores |
-| Infer: trivial input | "Hi." doesn't crash, returns gracefully |
-| Infer: UPDATE existing | Enhanced info updates pre-existing memory |
-| Full CRUD lifecycle | add → search → update → re-search → delete |
-| Batch add + searchable | 3 items batched, all semantically findable |
-| deleteAll | Clears filtered user's memories |
-| Multi-user isolation | Same store, user A cannot see user B's data |
-| agentId filter | getAll and search filter by agentId |
-| Pagination | limit/offset returns correct pages with no overlap |
-| Metadata round-trip | Custom metadata stored and retrieved correctly |
-| Metadata survives update | Metadata preserved when content changes |
-| reset() | Clears all memories |
+These 6 perspectives go beyond "does the feature work" — each catches a different class of bug:
+
+1. **Combinatorial** — Parameter interaction bugs (sort + filter + pagination)
+2. **Boundary/edge** — Implicit assumption bugs (empty, zero, huge, special chars)
+3. **Concurrency** — Thread-safety bugs (parallel writes, interleaved read+write)
+4. **Multi-tenant isolation** — Filter leaks (same user different agent, scoped deletes)
+5. **Multi-language** — Encoding bugs (CJK in JSON payload, unicode metadata keys)
+6. **Scenario-based** — Integration bugs (real-world multi-step workflows)
 
 ### Running tests
 
