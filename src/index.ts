@@ -1,16 +1,16 @@
-export { Memory } from './memory.js';
-export { NativeProvider } from './provider/native/index.js';
-export { SeekDBStore } from './provider/native/seekdb-store.js';
-export type { SeekDBStoreOptions } from './provider/native/seekdb-store.js';
+export { Memory } from './core/memory.js';
+export { NativeProvider } from './core/native-provider.js';
+export { SeekDBStore } from './storage/seekdb/seekdb.js';
+export type { SeekDBStoreOptions } from './storage/seekdb/seekdb.js';
 
-export type { MemoryProvider } from './provider/index.js';
+export type { MemoryProvider } from './core/provider.js';
 export type {
   VectorStore,
   VectorStoreRecord,
   VectorStoreFilter,
   VectorStoreSearchMatch,
   VectorStoreListOptions,
-} from './provider/native/vector-store.js';
+} from './storage/base.js';
 
 export type {
   MemoryRecord,
