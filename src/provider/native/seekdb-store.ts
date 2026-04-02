@@ -15,12 +15,12 @@ export interface SeekDBStoreOptions {
 }
 
 export class SeekDBStore implements VectorStore {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private client: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private collection: any;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private constructor(client: any, collection: any) {
     this.client = client;
     this.collection = collection;
@@ -53,7 +53,7 @@ export class SeekDBStore implements VectorStore {
 
   // ─── Payload ↔ Metadata mapping ──────────────────────────────────────
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private toSeekDBMetadata(payload: Record<string, unknown>): Record<string, any> {
     return {
       user_id: (payload.user_id as string) ?? '',
@@ -72,7 +72,7 @@ export class SeekDBStore implements VectorStore {
   private toRecord(
     id: string,
     document: string | null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     metadata: Record<string, any> | null,
     embedding?: number[] | null
   ): VectorStoreRecord {
@@ -94,9 +94,9 @@ export class SeekDBStore implements VectorStore {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private buildWhereClause(filters: VectorStoreFilter): Record<string, any> | null {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const conditions: Record<string, any>[] = [];
     if (filters.userId) conditions.push({ user_id: { $eq: filters.userId } });
     if (filters.agentId) conditions.push({ agent_id: { $eq: filters.agentId } });
@@ -262,7 +262,7 @@ export class SeekDBStore implements VectorStore {
     if (ids.length === 0) return;
     const result = await this.collection.get({ ids, include: ['metadatas'] });
     if (!result.ids || result.ids.length === 0) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const updatedMetadatas = (result.metadatas ?? []).map((m: any) => ({
       ...(m ?? {}),
       access_count: ((m?.access_count as number) ?? 0) + 1,

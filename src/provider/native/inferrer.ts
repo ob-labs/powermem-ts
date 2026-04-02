@@ -59,7 +59,7 @@ export class Inferrer {
   async decideActions(
     facts: string[],
     existingMemories: Array<{ id: string; text: string }>,
-    idMapping: Map<string, string>
+    _idMapping: Map<string, string>
   ): Promise<MemoryAction[]> {
     const prompt = buildUpdateMemoryPrompt(
       existingMemories,
