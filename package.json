@@ -24,9 +24,10 @@
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --exclude tests/e2e-*",
-    "test:watch": "vitest --exclude tests/e2e-*",
-    "test:e2e": "vitest run tests/e2e-ollama.test.ts",
+    "test": "vitest run --exclude 'tests/e2e-*' --exclude 'tests/seekdb-*'",
+    "test:watch": "vitest --exclude 'tests/e2e-*' --exclude 'tests/seekdb-*'",
+    "test:e2e": "vitest run tests/e2e-*.test.ts",
+    "test:seekdb": "vitest run tests/seekdb-*.test.ts",
     "test:all": "vitest run"
   },
   "dependencies": {
