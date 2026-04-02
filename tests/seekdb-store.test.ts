@@ -194,4 +194,192 @@ describeIf('SeekDBStore', () => {
     expect(rec!.scope).toBe('personal');
     expect(rec!.category).toBe('pref');
   });
+
+  // ── SeekDB-specific edge cases (differ from SQLite behavior) ─────────
+
+  describe('seekdb-specific: duplicate ID', () => {
+    it('insert duplicate ID throws (unlike SQLite which overwrites)', async () => {
+      await store.insert('dup', [1, 0, 0], makePayload({ data: 'first' }));
+      await expect(
+        store.insert('dup', [0, 1, 0], makePayload({ data: 'second' }))
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('seekdb-specific: dimension mismatch', () => {
+    it('insert with wrong vector dimension throws', async () => {
+      // Store configured for dimension=3, inserting dimension=2
+      await expect(
+        store.insert('bad', [1, 0], makePayload())
+      ).rejects.toThrow();
+    });
+
+    it('search with wrong query dimension throws', async () => {
+      await store.insert('1', [1, 0, 0], makePayload());
+      await expect(
+        store.search([1, 0], {}, 10) // dimension=2, should be 3
+      ).rejects.toThrow();
+    });
+
+    it('valid operation succeeds after dimension error', async () => {
+      // First: trigger error
+      await expect(store.insert('bad', [1, 0], makePayload())).rejects.toThrow();
+      // Then: valid operation should still work
+      await store.insert('good', [1, 0, 0], makePayload({ data: 'recovered' }));
+      const rec = await store.getById('good');
+      expect(rec!.content).toBe('recovered');
+    });
+  });
+
+  describe('seekdb-specific: removeAll edge cases', () => {
+    it('removeAll on empty collection is safe', async () => {
+      await expect(store.removeAll()).resolves.not.toThrow();
+    });
+
+    it('removeAll with filter on empty collection is safe', async () => {
+      await expect(store.removeAll({ userId: 'nobody' })).resolves.not.toThrow();
+    });
+  });
+
+  describe('seekdb-specific: close lifecycle', () => {
+    it('double close does not throw', async () => {
+      await store.close();
+      await expect(store.close()).resolves.not.toThrow();
+      // Recreate store for afterEach cleanup
+      store = (await tryCreateStore(tmpDir, `mem_close_${Date.now()}`))!;
+    });
+  });
+
+  describe('seekdb-specific: search score conversion', () => {
+    it('identical vectors produce score close to 1', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: 'exact' }));
+      const results = await store.search([1, 0, 0], {}, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].score).toBeGreaterThan(0.9);
+    });
+
+    it('orthogonal vectors produce score close to 0', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: 'x-axis' }));
+      const results = await store.search([0, 1, 0], {}, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0].score).toBeLessThan(0.2);
+    });
+  });
+
+  describe('seekdb-specific: query boundary cases', () => {
+    it('search with limit=0 returns empty', async () => {
+      await store.insert('1', [1, 0, 0], makePayload());
+      const results = await store.search([1, 0, 0], {}, 0);
+      expect(results).toHaveLength(0);
+    });
+
+    it('search with nResults > collection size returns all', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: 'a' }));
+      await store.insert('2', [0, 1, 0], makePayload({ data: 'b' }));
+      const results = await store.search([1, 0, 0], {}, 100);
+      expect(results).toHaveLength(2);
+    });
+
+    it('search on empty collection returns empty', async () => {
+      const results = await store.search([1, 0, 0], {}, 10);
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  describe('seekdb-specific: null/empty data edge cases', () => {
+    it('empty string document round-trips', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: '' }));
+      const rec = await store.getById('1');
+      expect(rec!.content).toBe('');
+    });
+
+    it('empty metadata object round-trips', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ metadata: {} }));
+      const rec = await store.getById('1');
+      expect(rec!.metadata).toEqual({});
+    });
+  });
+
+  describe('seekdb-specific: persistence across re-create', () => {
+    it('data persists after close and re-create on same path', async () => {
+      const collectionName = `persist_${Date.now()}`;
+
+      // Create first store and insert
+      const store1 = await SeekDBStore.create({
+        path: tmpDir, database: 'test',
+        collectionName, distance: 'cosine', dimension: 3,
+      });
+      await store1.insert('persist-1', [1, 0, 0], makePayload({ data: 'survives' }));
+      await store1.close();
+
+      // Re-create on same path/collection
+      const store2 = await SeekDBStore.create({
+        path: tmpDir, database: 'test',
+        collectionName, distance: 'cosine', dimension: 3,
+      });
+      const rec = await store2.getById('persist-1');
+      expect(rec).not.toBeNull();
+      expect(rec!.content).toBe('survives');
+      await store2.close();
+    });
+  });
+
+  describe('seekdb-specific: count edge cases', () => {
+    it('count on empty collection returns 0', async () => {
+      expect(await store.count()).toBe(0);
+    });
+
+    it('count with non-matching filter returns 0', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ user_id: 'alice' }));
+      expect(await store.count({ userId: 'nobody' })).toBe(0);
+    });
+  });
+
+  describe('seekdb-specific: incrementAccessCountBatch edge cases', () => {
+    it('batch increment with empty array is safe', async () => {
+      await expect(store.incrementAccessCountBatch([])).resolves.not.toThrow();
+    });
+
+    it('batch increment skips non-existent IDs gracefully', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ access_count: 0 }));
+      // Mix of existing and non-existing IDs
+      await store.incrementAccessCountBatch(['1', 'nonexistent']);
+      const rec = await store.getById('1');
+      expect(rec!.accessCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('seekdb-specific: list client-side sorting', () => {
+    it('offset beyond total returns empty records', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: 'only' }));
+      const { records, total } = await store.list({}, 10, 100);
+      expect(total).toBe(1);
+      expect(records).toHaveLength(0);
+    });
+
+    it('sortBy created_at asc works client-side', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({ data: 'old', created_at: '2024-01-01T00:00:00Z' }));
+      await store.insert('2', [0, 1, 0], makePayload({ data: 'new', created_at: '2024-06-01T00:00:00Z' }));
+      const { records } = await store.list({}, 100, 0, { sortBy: 'createdAt', order: 'asc' });
+      expect(records[0].content).toBe('old');
+      expect(records[1].content).toBe('new');
+    });
+  });
+
+  describe('seekdb-specific: unicode in documents and metadata', () => {
+    it('CJK + emoji document round-trips', async () => {
+      const content = '测试 🚀 中文 日本語 한국어';
+      await store.insert('1', [1, 0, 0], makePayload({ data: content }));
+      const rec = await store.getById('1');
+      expect(rec!.content).toBe(content);
+    });
+
+    it('unicode metadata values round-trip', async () => {
+      await store.insert('1', [1, 0, 0], makePayload({
+        metadata: { '标签': '重要', emoji: '🏷️' },
+      }));
+      const rec = await store.getById('1');
+      expect(rec!.metadata).toEqual({ '标签': '重要', emoji: '🏷️' });
+    });
+  });
 });
