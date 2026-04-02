@@ -22,7 +22,8 @@ import { Embedder } from '../integrations/embeddings/embedder.js';
 import { Inferrer } from './inferrer.js';
 import { SnowflakeIDGenerator } from '../utils/snowflake.js';
 import { computeDecayFactor, applyDecay } from '../intelligence/ebbinghaus.js';
-import { createEmbeddingsFromEnv, createLLMFromEnv } from '../integrations/factory.js';
+import { createEmbeddingsFromEnv } from '../integrations/embeddings/factory.js';
+import { createLLMFromEnv } from '../integrations/llm/factory.js';
 import { getDefaultHomeDir } from '../utils/platform.js';
 
 export interface NativeProviderOptions {
