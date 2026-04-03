@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # ─── Unit + SeekDB tests across Node versions ────────────────────────
+  # ─── Unit + Integration + Regression tests ───────────────────────────
   test:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
@@ -33,9 +33,24 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: SeekDB tests (auto-skip if bindings unavailable)
-        run: npx vitest run tests/seekdb-store.test.ts tests/seekdb-integration.test.ts
-        continue-on-error: true
+  # ─── SeekDB tests (macOS where native bindings are bundled) ──────────
+  test-seekdb:
+    name: SeekDB (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run SeekDB tests
+        run: npm run test:seekdb
+        timeout-minutes: 5
 
   # ─── Build verification ──────────────────────────────────────────────
   build:
