@@ -15,15 +15,18 @@ export interface SeekDBStoreOptions {
 }
 
 export class SeekDBStore implements VectorStore {
-   
+
   private client: any;
-   
+
   private collection: any;
 
-   
-  private constructor(client: any, collection: any) {
+  private readonly distanceMetric: 'cosine' | 'l2' | 'inner_product';
+
+
+  private constructor(client: any, collection: any, distanceMetric: 'cosine' | 'l2' | 'inner_product') {
     this.client = client;
     this.collection = collection;
+    this.distanceMetric = distanceMetric;
   }
 
   static async create(options: SeekDBStoreOptions): Promise<SeekDBStore> {
@@ -49,7 +52,36 @@ export class SeekDBStore implements VectorStore {
       schema,
     });
 
-    return new SeekDBStore(client, collection);
+    return new SeekDBStore(client, collection, distance);
+  }
+
+  // ─── Distance → Score conversion ─────────────────────────────────────
+
+  /**
+   * Convert distance to similarity score (0–1, higher = more similar).
+   * Formula depends on the configured distance metric, matching Python's OceanBase implementation.
+   */
+  private distanceToScore(distance: number): number {
+    if (distance == null) return 0;
+
+    switch (this.distanceMetric) {
+      case 'l2':
+        // L2: smaller distance = more similar → 1 / (1 + distance)
+        return 1 / (1 + Math.abs(distance));
+
+      case 'cosine':
+        // Cosine distance range [0, 2] → max(0, 1 - distance / 2)
+        return Math.max(0, 1 - distance / 2);
+
+      case 'inner_product': {
+        // Inner product returned as negative distance → negate, then (ip + 1) / 2, clamped to [0, 1]
+        const innerProd = -distance;
+        return Math.max(0, Math.min(1, (innerProd + 1) / 2));
+      }
+
+      default:
+        return 0;
+    }
   }
 
   // ─── Payload ↔ Metadata mapping ──────────────────────────────────────
@@ -230,7 +262,7 @@ export class SeekDBStore implements VectorStore {
       matches.push({
         id: result.ids[0][i],
         content: result.documents?.[0]?.[i] ?? '',
-        score: Math.max(0, 1 - distance),
+        score: this.distanceToScore(distance),
         metadata: metadata.metadata_b64 ? JSON.parse(Buffer.from(metadata.metadata_b64, 'base64').toString()) : (metadata.metadata_json ? JSON.parse(metadata.metadata_json) : undefined),
         createdAt: metadata.created_at || undefined,
         updatedAt: metadata.updated_at || undefined,

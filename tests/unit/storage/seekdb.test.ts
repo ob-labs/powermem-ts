@@ -251,6 +251,61 @@ describeIf('SeekDBStore', () => {
     });
   });
 
+  describe('seekdb-specific: distanceToScore conversion', () => {
+    it('cosine: distance 0 → score 1, distance 2 → score 0', () => {
+      // Default store uses cosine
+      const fn = (store as any).distanceToScore.bind(store);
+      expect(fn(0)).toBeCloseTo(1);
+      expect(fn(2)).toBeCloseTo(0);
+      expect(fn(1)).toBeCloseTo(0.5);
+    });
+
+    it('cosine: negative distance is clamped to 0', () => {
+      const fn = (store as any).distanceToScore.bind(store);
+      // distance > 2 should clamp to 0
+      expect(fn(3)).toBe(0);
+    });
+
+    it('l2: distance 0 → score 1, distance 1 → score 0.5', async () => {
+      const l2Store = await SeekDBStore.create({
+        path: tmpDir,
+        database: 'test',
+        collectionName: `l2_${Date.now()}`,
+        distance: 'l2',
+        dimension: 3,
+      });
+      const fn = (l2Store as any).distanceToScore.bind(l2Store);
+      expect(fn(0)).toBeCloseTo(1);
+      expect(fn(1)).toBeCloseTo(0.5);
+      expect(fn(9)).toBeCloseTo(0.1);
+      await l2Store.close();
+    });
+
+    it('inner_product: negative distance (high similarity) → score near 1', async () => {
+      const ipStore = await SeekDBStore.create({
+        path: tmpDir,
+        database: 'test',
+        collectionName: `ip_${Date.now()}`,
+        distance: 'inner_product',
+        dimension: 3,
+      });
+      const fn = (ipStore as any).distanceToScore.bind(ipStore);
+      // distance = -1 → innerProd = 1 → (1+1)/2 = 1.0
+      expect(fn(-1)).toBeCloseTo(1);
+      // distance = 0 → innerProd = 0 → (0+1)/2 = 0.5
+      expect(fn(0)).toBeCloseTo(0.5);
+      // distance = 1 → innerProd = -1 → (-1+1)/2 = 0
+      expect(fn(1)).toBeCloseTo(0);
+      await ipStore.close();
+    });
+
+    it('null/undefined distance returns 0', () => {
+      const fn = (store as any).distanceToScore.bind(store);
+      expect(fn(null)).toBe(0);
+      expect(fn(undefined)).toBe(0);
+    });
+  });
+
   describe('seekdb-specific: search score conversion', () => {
     it('identical vectors produce score close to 1', async () => {
       await store.insert('1', [1, 0, 0], makePayload({ data: 'exact' }));
