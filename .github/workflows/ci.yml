@@ -33,10 +33,13 @@ jobs:
       - name: Unit tests
         run: npm test
 
-  # ─── SeekDB tests (macOS ARM64 — native bindings are darwin-arm64) ────
+  # ─── SeekDB tests (macOS ARM64 — bindings bundled as darwin-arm64) ───
   test-seekdb:
     name: SeekDB (macOS ARM64)
     runs-on: macos-14
+    env:
+      # Propagate library path to ALL steps including vitest subprocesses
+      DYLD_LIBRARY_PATH: ${{ github.workspace }}/node_modules/@seekdb/js-bindings:${{ github.workspace }}/node_modules/@seekdb/js-bindings/libs
 
     steps:
       - uses: actions/checkout@v4
@@ -48,33 +51,39 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Verify SeekDB bindings
+      - name: Verify SeekDB native binding loads
         run: |
-          SEEKDB_DIR=$(node -e "console.log(require.resolve('@seekdb/js-bindings').replace('/seekdb.js',''))")
-          echo "SeekDB dir: $SEEKDB_DIR"
-          ls -la "$SEEKDB_DIR"/*.node "$SEEKDB_DIR"/*.dylib "$SEEKDB_DIR"/libs/ 2>/dev/null | head -20
-          echo "Platform: $(uname -m)"
-          # Set library path for native deps
-          export DYLD_LIBRARY_PATH="$SEEKDB_DIR:$SEEKDB_DIR/libs:$DYLD_LIBRARY_PATH"
-          # Test actual load
+          echo "DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
           node -e "
             const seekdb = require('@seekdb/js-bindings');
             seekdb.getNativeBindingAsync().then(b => {
-              console.log('Native binding loaded OK:', typeof b);
+              console.log('SeekDB binding loaded OK');
             }).catch(e => {
-              console.error('Native binding FAILED:', e.message);
+              console.error('FAILED:', e.message);
               process.exit(1);
             });
           "
 
-      - name: Run SeekDB tests
+      - name: Verify SeekDB embedded DB works
         run: |
-          SEEKDB_DIR=$(node -e "console.log(require.resolve('@seekdb/js-bindings').replace('/seekdb.js',''))")
-          export DYLD_LIBRARY_PATH="$SEEKDB_DIR:$SEEKDB_DIR/libs:$DYLD_LIBRARY_PATH"
-          npm run test:seekdb
+          node -e "
+            async function test() {
+              const { SeekdbClient } = require('seekdb');
+              const client = new SeekdbClient({ path: '/tmp/seekdb-ci-check', database: 'test' });
+              const col = await client.getOrCreateCollection({ name: 'check' });
+              await col.add({ ids: ['1'], documents: ['hello'], embeddings: [[1,0,0]] });
+              const result = await col.get({ ids: ['1'] });
+              console.log('SeekDB embedded works. IDs:', result.ids);
+              await client.close();
+            }
+            test().catch(e => { console.error('FAILED:', e.message); process.exit(1); });
+          "
+
+      - name: Run SeekDB tests
+        run: npm run test:seekdb --reporter=verbose
         timeout-minutes: 5
 
-  # ─── SeekDB tests (Linux x64 — download native bindings from S3) ─────
+  # ─── SeekDB tests (Linux x64 — download bindings + install libaio) ──
   test-seekdb-linux:
     name: SeekDB (Linux x64)
     runs-on: ubuntu-latest
@@ -87,30 +96,51 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libaio1
+
       - name: Install dependencies
         run: npm install
 
       - name: Download SeekDB native bindings
         run: |
-          SEEKDB_DIR=$(node -e "console.log(require.resolve('@seekdb/js-bindings').replace('/seekdb.js',''))")
-          echo "SeekDB dir: $SEEKDB_DIR"
-          # Trigger on-demand download
           node -e "
-            const { ensureBindingsDownloaded } = require('$SEEKDB_DIR/download.js');
+            const { ensureBindingsDownloaded } = require('@seekdb/js-bindings/download.js');
             ensureBindingsDownloaded().then(dir => {
               console.log('Downloaded to:', dir);
+              // Also extract libseekdb.so from the zip if not present
+              const fs = require('fs');
+              const path = require('path');
+              const soPath = path.join(dir, 'libseekdb.so');
+              if (!fs.existsSync(soPath)) {
+                const zipPath = path.join(dir, 'seekdb-js-bindings-linux-x64.zip');
+                if (fs.existsSync(zipPath)) {
+                  const AdmZip = require('adm-zip');
+                  const zip = new AdmZip(zipPath);
+                  zip.extractEntryTo('libseekdb.so', dir, false, true);
+                  console.log('Extracted libseekdb.so');
+                }
+              }
+              console.log('Files:', fs.readdirSync(dir).filter(f => f.endsWith('.so') || f.endsWith('.node')));
             }).catch(e => {
               console.error('Download failed:', e.message);
               process.exit(1);
             });
           "
 
-      - name: Verify SeekDB bindings
+      - name: Verify SeekDB binding loads
         run: |
+          CACHE_DIR=$(node -e "
+            const p = require('path'), os = require('os');
+            const base = process.env.SEEKDB_BINDINGS_CACHE_DIR || p.join(os.homedir(), '.seekdb', 'bindings');
+            console.log(p.join(base, '7548fd4ac9bb9d8a06621dfb1ade3924a95145d6', 'linux-x64'));
+          ")
+          export LD_LIBRARY_PATH="$CACHE_DIR:$LD_LIBRARY_PATH"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
           node -e "
             const seekdb = require('@seekdb/js-bindings');
             seekdb.getNativeBindingAsync().then(b => {
-              console.log('Native binding loaded OK');
+              console.log('SeekDB binding loaded OK');
             }).catch(e => {
               console.error('FAILED:', e.message);
               process.exit(1);
@@ -118,7 +148,14 @@ jobs:
           "
 
       - name: Run SeekDB tests
-        run: npm run test:seekdb
+        run: |
+          CACHE_DIR=$(node -e "
+            const p = require('path'), os = require('os');
+            const base = process.env.SEEKDB_BINDINGS_CACHE_DIR || p.join(os.homedir(), '.seekdb', 'bindings');
+            console.log(p.join(base, '7548fd4ac9bb9d8a06621dfb1ade3924a95145d6', 'linux-x64'));
+          ")
+          export LD_LIBRARY_PATH="$CACHE_DIR:$LD_LIBRARY_PATH"
+          npm run test:seekdb
         timeout-minutes: 5
 
   # ─── Build verification ──────────────────────────────────────────────
