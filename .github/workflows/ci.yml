@@ -72,7 +72,6 @@ jobs:
   test-seekdb-linux:
     name: SeekDB (Linux x64)
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -90,14 +89,17 @@ jobs:
       - name: Download SeekDB native bindings
         run: |
           node -e "
-            const { ensureBindingsDownloaded } = require('@seekdb/js-bindings/download.js');
+            // Use filesystem path to bypass package.json exports restriction
+            const downloadPath = require.resolve('@seekdb/js-bindings').replace('seekdb.js', 'download.js');
+            const { ensureBindingsDownloaded } = require(downloadPath);
             ensureBindingsDownloaded().then(dir => {
               console.log('Downloaded to:', dir);
-              // Also extract libseekdb.so from the zip if not present
               const fs = require('fs');
               const path = require('path');
+              // Verify libseekdb.so was extracted (download.js extractAllTo should handle this)
               const soPath = path.join(dir, 'libseekdb.so');
               if (!fs.existsSync(soPath)) {
+                console.log('libseekdb.so not found, extracting from zip...');
                 const zipPath = path.join(dir, 'seekdb-js-bindings-linux-x64.zip');
                 if (fs.existsSync(zipPath)) {
                   const AdmZip = require('adm-zip');
@@ -106,7 +108,10 @@ jobs:
                   console.log('Extracted libseekdb.so');
                 }
               }
-              console.log('Files:', fs.readdirSync(dir).filter(f => f.endsWith('.so') || f.endsWith('.node')));
+              const files = fs.readdirSync(dir).filter(f => f.endsWith('.so') || f.endsWith('.node'));
+              console.log('Native files:', files);
+              if (!files.includes('seekdb.node')) { console.error('seekdb.node missing!'); process.exit(1); }
+              if (!files.includes('libseekdb.so')) { console.error('libseekdb.so missing!'); process.exit(1); }
             }).catch(e => {
               console.error('Download failed:', e.message);
               process.exit(1);
@@ -115,13 +120,11 @@ jobs:
 
       - name: Verify SeekDB binding loads
         run: |
-          CACHE_DIR=$(node -e "
-            const p = require('path'), os = require('os');
-            const base = process.env.SEEKDB_BINDINGS_CACHE_DIR || p.join(os.homedir(), '.seekdb', 'bindings');
-            console.log(p.join(base, '7548fd4ac9bb9d8a06621dfb1ade3924a95145d6', 'linux-x64'));
-          ")
+          # Find the cache dir dynamically (contains seekdb.node + libseekdb.so)
+          CACHE_DIR=$(find ~/.seekdb -name 'seekdb.node' -exec dirname {} \; 2>/dev/null | head -1)
+          echo "Cache dir: $CACHE_DIR"
+          ls -la "$CACHE_DIR"/*.so "$CACHE_DIR"/*.node 2>/dev/null || true
           export LD_LIBRARY_PATH="$CACHE_DIR:$LD_LIBRARY_PATH"
-          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
           node -e "
             const seekdb = require('@seekdb/js-bindings');
             seekdb.getNativeBindingAsync().then(b => {
@@ -134,11 +137,7 @@ jobs:
 
       - name: Run SeekDB tests
         run: |
-          CACHE_DIR=$(node -e "
-            const p = require('path'), os = require('os');
-            const base = process.env.SEEKDB_BINDINGS_CACHE_DIR || p.join(os.homedir(), '.seekdb', 'bindings');
-            console.log(p.join(base, '7548fd4ac9bb9d8a06621dfb1ade3924a95145d6', 'linux-x64'));
-          ")
+          CACHE_DIR=$(find ~/.seekdb -name 'seekdb.node' -exec dirname {} \; 2>/dev/null | head -1)
           export LD_LIBRARY_PATH="$CACHE_DIR:$LD_LIBRARY_PATH"
           npm run test:seekdb
         timeout-minutes: 5
