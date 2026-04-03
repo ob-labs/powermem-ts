@@ -64,29 +64,8 @@ jobs:
             });
           "
 
-      - name: Verify SeekDB embedded DB works
-        run: |
-          node -e "
-            async function test() {
-              const { SeekdbClient, Schema, VectorIndexConfig } = require('seekdb');
-              const client = new SeekdbClient({ path: '/tmp/seekdb-ci-check', database: 'test' });
-              const schema = new Schema({
-                vectorIndex: new VectorIndexConfig({
-                  hnsw: { dimension: 3, distance: 'cosine' },
-                  embeddingFunction: null
-                })
-              });
-              const col = await client.getOrCreateCollection({ name: 'check', schema });
-              await col.add({ ids: ['1'], documents: ['hello'], embeddings: [[1,0,0]] });
-              const result = await col.get({ ids: ['1'] });
-              console.log('SeekDB embedded works. IDs:', result.ids);
-              await client.close();
-            }
-            test().catch(e => { console.error('FAILED:', e.message); process.exit(1); });
-          "
-
       - name: Run SeekDB tests
-        run: npm run test:seekdb --reporter=verbose
+        run: npm run test:seekdb
         timeout-minutes: 5
 
   # ─── SeekDB tests (Linux x64 — download bindings + install libaio) ──
