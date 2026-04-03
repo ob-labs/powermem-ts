@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { Memory } from '../../src/core/memory.js';
 import { NativeProvider } from '../../src/core/native-provider.js';
 import { SQLiteStore } from '../../src/storage/sqlite/sqlite.js';
+import { PowerMemError } from '../../src/errors/index.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
 // ── memory.ts:41-42 — HttpProvider (serverUrl) path ──────────────────────
@@ -120,6 +121,10 @@ describe('NativeProvider edge cases', () => {
     await expect(
       provider.update('999999', { content: 'nope' })
     ).rejects.toThrow('Memory not found');
+
+    await expect(
+      provider.update('999999', { content: 'nope' })
+    ).rejects.toBeInstanceOf(PowerMemError);
   });
 
   it('update metadata only (no content change) does not re-embed', async () => {

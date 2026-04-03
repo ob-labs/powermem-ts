@@ -25,6 +25,7 @@ import { computeDecayFactor, applyDecay } from '../intelligence/ebbinghaus.js';
 import { createEmbeddingsFromEnv } from '../integrations/embeddings/factory.js';
 import { createLLMFromEnv } from '../integrations/llm/factory.js';
 import { getDefaultHomeDir } from '../utils/platform.js';
+import { PowerMemError } from '../errors/index.js';
 
 export interface NativeProviderOptions {
   embeddings?: Embeddings;
@@ -348,7 +349,7 @@ export class NativeProvider implements MemoryProvider {
 
   async update(memoryId: string, params: UpdateParams): Promise<MemoryRecord> {
     const existing = await this.store.getById(memoryId);
-    if (!existing) throw new Error(`Memory not found: ${memoryId}`);
+    if (!existing) throw new PowerMemError(`Memory not found: ${memoryId}`, 'NOT_FOUND');
 
     const content = params.content ?? existing.content;
     const metadata = params.metadata ?? existing.metadata;

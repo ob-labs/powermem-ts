@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { NativeProvider } from '../../src/core/native-provider.js';
+import { PowerMemError } from '../../src/errors/index.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('edge cases and boundary conditions', () => {
@@ -50,14 +51,18 @@ describe('edge cases and boundary conditions', () => {
   // ── update() with invalid IDs ───────────────────────────────────────
 
   describe('update — invalid IDs', () => {
-    it('nonexistent ID throws', async () => {
+    it('nonexistent ID throws PowerMemError', async () => {
       await expect(provider.update('999999999', { content: 'x' }))
         .rejects.toThrow('Memory not found');
+      await expect(provider.update('999999999', { content: 'x' }))
+        .rejects.toBeInstanceOf(PowerMemError);
     });
 
-    it('empty string ID throws', async () => {
+    it('empty string ID throws PowerMemError', async () => {
       await expect(provider.update('', { content: 'x' }))
         .rejects.toThrow('Memory not found');
+      await expect(provider.update('', { content: 'x' }))
+        .rejects.toBeInstanceOf(PowerMemError);
     });
   });
 
