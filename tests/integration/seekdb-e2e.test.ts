@@ -17,22 +17,29 @@ import { NativeProvider } from '../../src/core/native-provider.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 import { calculateStatsFromMemories } from '../../src/utils/stats.js';
 
-async function seekdbAvailable(): Promise<boolean> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seekdb-avail-'));
+// Reuse the same availability check pattern as the passing seekdb.test.ts
+async function tryCreateStore(tmpDir: string, name: string, dim = 8) {
   try {
-    const store = await SeekDBStore.create({ path: dir, database: 'check', collectionName: 'c', dimension: 3 });
-    // Don't call store.close() — SeekDB embedded may SIGABRT on cleanup
-    // The temp dir cleanup below handles resource release
-    return true;
+    return await SeekDBStore.create({
+      path: tmpDir, database: 'test', collectionName: name, dimension: dim,
+    });
   } catch {
-    return false;
+    return null;
+  }
+}
+
+let seekdbAvailable = false;
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seekdb-e2e-check-'));
+  try {
+    const s = await tryCreateStore(dir, 'check');
+    seekdbAvailable = s != null;
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   }
 }
 
-const available = await seekdbAvailable();
-const describeIf = available ? describe : describe.skip;
+const describeIf = seekdbAvailable ? describe : describe.skip;
 
 describeIf('SeekDB E2E — full stack', () => {
   let tmpDir: string;
