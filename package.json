@@ -30,7 +30,7 @@
     "test": "vitest run --exclude 'tests/e2e/**' --exclude 'tests/**/seekdb*'",
     "test:watch": "vitest --exclude 'tests/e2e/**' --exclude 'tests/**/seekdb*'",
     "test:e2e": "vitest run tests/e2e/",
-    "test:seekdb": "vitest run tests/unit/storage/seekdb.test.ts tests/integration/seekdb.test.ts tests/integration/seekdb-e2e.test.ts --pool=forks --poolOptions.forks.singleFork",
+    "test:seekdb": "vitest run tests/unit/storage/seekdb.test.ts && vitest run tests/integration/seekdb.test.ts && vitest run tests/integration/seekdb-e2e.test.ts",
     "test:all": "vitest run"
   },
   "dependencies": {
