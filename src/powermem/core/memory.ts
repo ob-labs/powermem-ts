@@ -665,8 +665,17 @@ export class Memory extends MemoryBase {
     };
   }
 
-  async add(content: MemoryContent, options: Omit<AddParams, 'content'> = {}): Promise<AddResult> {
-    const params = { content, ...options };
+  async add(content: MemoryContent, options?: Omit<AddParams, 'content'>): Promise<AddResult>;
+  async add(params: AddParams): Promise<AddResult>;
+  async add(
+    contentOrParams: MemoryContent | AddParams,
+    options: Omit<AddParams, 'content'> = {},
+  ): Promise<AddResult> {
+    const params = (
+      typeof contentOrParams === 'string' || Array.isArray(contentOrParams)
+        ? { content: contentOrParams, ...options }
+        : contentOrParams
+    );
     try {
       const result = await this.addInternal(params);
       this.logAuditEvent(
@@ -693,13 +702,20 @@ export class Memory extends MemoryBase {
     }
   }
 
-  async search(query: string, options: Omit<SearchParams, 'query'> = {}): Promise<SearchResult> {
-    const params = { query, ...options };
+  async search(query: string, options?: Omit<SearchParams, 'query'>): Promise<SearchResult>;
+  async search(params: SearchParams): Promise<SearchResult>;
+  async search(
+    queryOrParams: string | SearchParams,
+    options: Omit<SearchParams, 'query'> = {},
+  ): Promise<SearchResult> {
+    const params = typeof queryOrParams === 'string'
+      ? { query: queryOrParams, ...options }
+      : queryOrParams;
     try {
       const result = await this.searchInternal(params);
       this.logAuditEvent(
         'memory.search',
-        { query, resultCount: result.results.length },
+        { query: params.query, resultCount: result.results.length },
         params.userId,
         params.agentId,
       );
@@ -713,7 +729,7 @@ export class Memory extends MemoryBase {
     } catch (error) {
       this.captureTelemetryEvent(
         'memory.search.error',
-        { error: error instanceof Error ? error.message : String(error), query },
+        { error: error instanceof Error ? error.message : String(error), query: params.query },
         params.userId,
         params.agentId,
       );
@@ -728,8 +744,17 @@ export class Memory extends MemoryBase {
     return toMemoryRecord(record);
   }
 
-  async update(memoryId: string, content: string, options: Omit<UpdateParams, 'content'> = {}): Promise<MemoryRecord> {
-    const result = await this.updateInternal(memoryId, { content, ...options });
+  async update(memoryId: string, content: string, options?: Omit<UpdateParams, 'content'>): Promise<MemoryRecord>;
+  async update(memoryId: string, params: UpdateParams): Promise<MemoryRecord>;
+  async update(
+    memoryId: string,
+    contentOrParams: string | UpdateParams,
+    options: Omit<UpdateParams, 'content'> = {},
+  ): Promise<MemoryRecord> {
+    const params = typeof contentOrParams === 'string'
+      ? { content: contentOrParams, ...options }
+      : contentOrParams;
+    const result = await this.updateInternal(memoryId, params);
     this.logAuditEvent('memory.update', { memoryId }, result.userId, result.agentId);
     return result;
   }

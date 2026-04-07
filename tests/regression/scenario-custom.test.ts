@@ -8,7 +8,6 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { Memory } from '../../src/powermem/core/memory.js';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
 describe('custom integration — scenario 5', () => {
@@ -128,14 +127,14 @@ describe('custom integration — scenario 5', () => {
 });
 
 describe('topic / category filtering — test_topic_comprehensive', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   afterEach(async () => {
     if (provider) await provider.close();
   });
 
   it('filter getAll by category', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -162,7 +161,7 @@ describe('topic / category filtering — test_topic_comprehensive', () => {
   });
 
   it('sort by category groups related memories', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });

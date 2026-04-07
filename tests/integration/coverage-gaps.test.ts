@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { Memory } from '../../src/powermem/core/memory.js';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { SQLiteStore } from '../../src/powermem/storage/sqlite/sqlite.js';
 import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
@@ -107,15 +106,15 @@ describe('SQLiteStore filters', () => {
 
 // ── index.ts:319 — update throws for non-existent ID ─────────────────────
 
-describe('NativeProvider edge cases', () => {
-  let provider: NativeProvider;
+describe('Memory edge cases', () => {
+  let provider: Memory;
 
   afterEach(async () => {
     if (provider) await provider.close();
   });
 
   it('update throws for non-existent memory', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -131,7 +130,7 @@ describe('NativeProvider edge cases', () => {
 
   it('update metadata only (no content change) does not re-embed', async () => {
     const embeddings = new MockEmbeddings();
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings,
       dbPath: ':memory:',
     });
@@ -153,7 +152,7 @@ describe('NativeProvider edge cases', () => {
     const origLlmKey = process.env.LLM_API_KEY;
     delete process.env.LLM_API_KEY;
 
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -167,7 +166,7 @@ describe('NativeProvider edge cases', () => {
   });
 
   it('search with runId filter works end-to-end', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -182,7 +181,7 @@ describe('NativeProvider edge cases', () => {
 
 // ── index.ts:70 — mkdir for db directory ──────────────────────────────────
 
-describe('NativeProvider with file-based DB', () => {
+describe('Memory with file-based DB', () => {
   it('creates db directory if it does not exist', async () => {
     const fs = await import('node:fs');
     const os = await import('node:os');
@@ -190,7 +189,7 @@ describe('NativeProvider with file-based DB', () => {
     const tmpDir = path.join(os.tmpdir(), `powermem-test-${Date.now()}`);
     const dbPath = path.join(tmpDir, 'sub', 'test.db');
 
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath,
     });
@@ -207,7 +206,7 @@ describe('NativeProvider with file-based DB', () => {
 
 // ── index.ts:76 — embeddings fallback to env (env-based creation) ────────
 
-describe('NativeProvider env-based embeddings fallback', () => {
+describe('Memory env-based embeddings fallback', () => {
   it('uses createEmbeddingsFromEnv when embeddings not passed', async () => {
     // Set env vars so the factory can create OpenAI embeddings
     const origProvider = process.env.EMBEDDING_PROVIDER;
@@ -218,7 +217,7 @@ describe('NativeProvider env-based embeddings fallback', () => {
     process.env.EMBEDDING_MODEL = 'text-embedding-3-small';
 
     // This will create OpenAI embeddings from env (won't actually call API)
-    const provider = await NativeProvider.create({ dbPath: ':memory:' });
+    const provider = await Memory.create({ dbPath: ':memory:' });
     expect(provider).toBeDefined();
     await provider.close();
 

@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NativeProvider } from '../../helpers/native-provider-compat.js';
+import { Memory } from '../../../src/powermem/core/memory.js';
 import { MockEmbeddings, MockLLM } from '../../mocks.js';
 
-describe('NativeProvider', () => {
-  let provider: NativeProvider;
+describe('Memory', () => {
+  let provider: Memory;
   let embeddings: MockEmbeddings;
 
   function createProvider(llmResponses?: string[]) {
     embeddings = new MockEmbeddings();
     const llm = llmResponses ? new MockLLM(llmResponses) : undefined;
     // Use in-memory SQLite for tests
-    return NativeProvider.create({
+    return Memory.create({
       embeddings,
       llm,
       dbPath: ':memory:',
@@ -477,7 +477,7 @@ describe('NativeProvider', () => {
   describe('fallbackToSimpleAdd', () => {
     it('falls back to simple add when infer produces no facts', async () => {
       const emptyFactsLlm = new MockLLM([JSON.stringify({ facts: [] })]);
-      provider = await NativeProvider.create({
+      provider = await Memory.create({
         embeddings: new MockEmbeddings(),
         llm: emptyFactsLlm,
         dbPath: ':memory:',
@@ -494,7 +494,7 @@ describe('NativeProvider', () => {
     it('applies reranker to search results', async () => {
       const reverseReranker = async (_q: string, hits: any[]) => [...hits].reverse();
 
-      provider = await NativeProvider.create({
+      provider = await Memory.create({
         embeddings: new MockEmbeddings(),
         dbPath: ':memory:',
         reranker: reverseReranker,
@@ -540,7 +540,7 @@ describe('NativeProvider', () => {
 
   describe('decay', () => {
     it('enableDecay adjusts search scores', async () => {
-      provider = await NativeProvider.create({
+      provider = await Memory.create({
         embeddings: new MockEmbeddings(),
         dbPath: ':memory:',
         enableDecay: true,

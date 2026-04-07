@@ -231,7 +231,7 @@ npx tsx src/server/cli/server.ts
 
 ```
 src/
-├── core/           Memory facade, NativeProvider, HttpProvider, Inferrer
+├── core/           Memory facade, HttpProvider, Inferrer
 ├── storage/        VectorStore interface, SQLiteStore, SeekDBStore, PgVectorStore, SubStorageRouter
 ├── integrations/   Embeddings, LLM, Rerank — registry-based factories + providers
 ├── intelligence/   IntelligenceManager, Ebbinghaus decay, MemoryOptimizer, ImportanceEvaluator

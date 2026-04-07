@@ -11,14 +11,14 @@
  * - Special characters and punctuation
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('multi-language support', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   beforeAll(async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });

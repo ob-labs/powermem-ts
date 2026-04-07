@@ -9,8 +9,8 @@
  * - Decay affects search result ordering
  */
 import { describe, it, expect, afterEach } from 'vitest';
+import { Memory } from '../../../src/powermem/core/memory.js';
 import { computeDecayFactor, applyDecay } from '../../../src/powermem/intelligence/ebbinghaus-algorithm.js';
-import { NativeProvider } from '../../helpers/native-provider-compat.js';
 import { MockEmbeddings } from '../../mocks.js';
 
 describe('Ebbinghaus forgetting curve — detailed', () => {
@@ -123,7 +123,7 @@ describe('Ebbinghaus forgetting curve — detailed', () => {
   // ── Integration: decay affects search ordering ───────────────────────
 
   it('recently accessed memory ranks higher than stale one with decay enabled', async () => {
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
       enableDecay: true,

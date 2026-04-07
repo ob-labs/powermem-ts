@@ -8,14 +8,14 @@
  * - Concurrent adds don't lose data or corrupt state
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('multi-agent isolation', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   beforeAll(async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -70,7 +70,7 @@ describe('multi-agent isolation', () => {
 
 describe('concurrency safety', () => {
   it('10 concurrent adds — no data loss', async () => {
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -96,7 +96,7 @@ describe('concurrency safety', () => {
   });
 
   it('concurrent search does not corrupt state', async () => {
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -121,7 +121,7 @@ describe('concurrency safety', () => {
   });
 
   it('concurrent add + search interleaved', async () => {
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });

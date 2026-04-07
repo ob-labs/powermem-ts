@@ -13,11 +13,10 @@ Three storage backends:
 
 ```
 src/
-├── core/                  Memory facade, NativeProvider, HttpProvider, Inferrer
-│   ├── memory.ts          Main entry — create(), add(), search(), get(), update(), delete()
+├── core/                  Memory facade, HttpProvider, Inferrer
+│   ├── memory.ts          Main entry + local runtime — create(), add(), search(), get(), update(), delete()
 │   │                      getStatistics(), getUsers(), optimize(), exportMemories(),
 │   │                      importMemories(), migrateToSubStore()
-│   ├── native-provider.ts Local implementation — embedder + inferrer + intelligence + graph + sub-storage
 │   ├── http-provider.ts   Remote client — talks to dashboard REST API
 │   ├── provider.ts        MemoryProvider interface
 │   └── inferrer.ts        LLM-driven fact extraction + action decisions
@@ -103,7 +102,7 @@ Memory.create(options)
      ├─ Resolve LLM: explicit > config-driven > env-based (optional)
      ├─ Resolve Reranker: explicit > config-driven (optional)
      ├─ Create IntelligenceManager (if decay enabled)
-     └─ NativeProvider.create(store, embedder, inferrer, ...)
+     └─ return local Memory runtime
 ```
 
 ### Intelligent add (infer=true)

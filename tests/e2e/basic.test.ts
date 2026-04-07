@@ -14,7 +14,6 @@ import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { OllamaEmbeddings } from '@langchain/ollama';
 import { ChatOllama } from '@langchain/ollama';
 import { Memory } from '../../src/powermem/core/memory.js';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const EMBED_MODEL = 'nomic-embed-text';
@@ -519,13 +518,13 @@ describe('E2E with Ollama', async () => {
     });
   });
 
-  // ─── NativeProvider directly ────────────────────────────────────────────
+  // ─── Memory directly ────────────────────────────────────────────────────
 
-  describe('NativeProvider direct usage', () => {
-    let provider: NativeProvider;
+  describe('Memory direct usage', () => {
+    let provider: Memory;
 
     beforeAll(async () => {
-      provider = await NativeProvider.create({
+      provider = await Memory.create({
         embeddings: createEmbeddings(),
         llm: createLLM(),
         dbPath: ':memory:',

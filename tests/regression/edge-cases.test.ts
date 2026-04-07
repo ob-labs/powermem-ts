@@ -6,15 +6,15 @@
  * empty content, idempotent deletes, empty queries, null/edge values.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('edge cases and boundary conditions', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   beforeEach(async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });

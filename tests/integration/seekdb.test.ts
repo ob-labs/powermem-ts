@@ -1,5 +1,5 @@
 /**
- * Integration test: NativeProvider + SeekDBStore + MockEmbeddings
+ * Integration test: Memory + SeekDBStore + MockEmbeddings
  * Verifies the full stack works end-to-end with SeekDB as the backend.
  * Skipped when seekdb native bindings are unavailable.
  */
@@ -7,7 +7,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { SeekDBStore } from '../../src/powermem/storage/seekdb/seekdb.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
@@ -37,8 +37,8 @@ let seekdbAvailable = false;
 
 const describeIf = seekdbAvailable ? describe : describe.skip;
 
-describeIf('NativeProvider + SeekDBStore integration', () => {
-  let provider: NativeProvider;
+describeIf('Memory + SeekDBStore integration', () => {
+  let provider: Memory;
   let tmpDir: string;
 
   async function createProvider(llmResponses?: string[]) {
@@ -51,7 +51,7 @@ describeIf('NativeProvider + SeekDBStore integration', () => {
     });
     const embeddings = new MockEmbeddings();
     const llm = llmResponses ? new MockLLM(llmResponses) : undefined;
-    return NativeProvider.create({ embeddings, llm, store, dbPath: ':memory:' });
+    return Memory.create({ embeddings, llm, store, dbPath: ':memory:' });
   }
 
   afterEach(async () => {
