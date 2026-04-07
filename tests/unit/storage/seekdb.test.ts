@@ -314,11 +314,13 @@ describeIf('SeekDBStore', () => {
       expect(results[0].score).toBeGreaterThan(0.9);
     });
 
-    it('orthogonal vectors produce score close to 0', async () => {
+    it('orthogonal vectors produce score close to 0.5', async () => {
       await store.insert('1', [1, 0, 0], makePayload({ data: 'x-axis' }));
       const results = await store.search([0, 1, 0], {}, 1);
       expect(results).toHaveLength(1);
-      expect(results[0].score).toBeLessThan(0.2);
+      // For cosine distance, orthogonal vectors have distance ~= 1, mapped to score ~= 0.5
+      expect(results[0].score).toBeGreaterThan(0.4);
+      expect(results[0].score).toBeLessThan(0.6);
     });
   });
 

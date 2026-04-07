@@ -5,6 +5,7 @@ import type {
   VectorStoreSearchMatch,
   VectorStoreListOptions,
 } from '../base.js';
+import path from 'node:path';
 
 export interface SeekDBStoreOptions {
   path: string;
@@ -15,6 +16,7 @@ export interface SeekDBStoreOptions {
 }
 
 export class SeekDBStore implements VectorStore {
+  private static readonly sharedClients = new Map<string, { client: any; refCount: number }>();
 
   private client: any;
 
@@ -22,37 +24,77 @@ export class SeekDBStore implements VectorStore {
 
   private readonly distanceMetric: 'cosine' | 'l2' | 'inner_product';
 
+  private readonly clientKey: string;
 
-  private constructor(client: any, collection: any, distanceMetric: 'cosine' | 'l2' | 'inner_product') {
+  private isClosed = false;
+
+  private constructor(
+    client: any,
+    collection: any,
+    distanceMetric: 'cosine' | 'l2' | 'inner_product',
+    clientKey: string
+  ) {
     this.client = client;
     this.collection = collection;
     this.distanceMetric = distanceMetric;
+    this.clientKey = clientKey;
+  }
+
+  private static buildClientKey(dbPath: string, database: string): string {
+    return `${path.resolve(dbPath)}::${database}`;
+  }
+
+  private static acquireClient(dbPath: string, database: string, SeekdbClient: any): { client: any; key: string } {
+    const key = SeekDBStore.buildClientKey(dbPath, database);
+    const existing = SeekDBStore.sharedClients.get(key);
+    if (existing) {
+      existing.refCount += 1;
+      return { client: existing.client, key };
+    }
+
+    const client = new SeekdbClient({ path: dbPath, database });
+    SeekDBStore.sharedClients.set(key, { client, refCount: 1 });
+    return { client, key };
+  }
+
+  private static async releaseClient(key: string): Promise<void> {
+    const entry = SeekDBStore.sharedClients.get(key);
+    if (!entry) return;
+
+    entry.refCount -= 1;
+    if (entry.refCount > 0) return;
+
+    SeekDBStore.sharedClients.delete(key);
+    await entry.client?.close?.();
   }
 
   static async create(options: SeekDBStoreOptions): Promise<SeekDBStore> {
     const { SeekdbClient, Schema, VectorIndexConfig } = await import('seekdb');
 
-    const client = new SeekdbClient({
-      path: options.path,
-      database: options.database ?? 'powermem',
-    });
+    const database = options.database ?? 'powermem';
+    const { client, key } = SeekDBStore.acquireClient(options.path, database, SeekdbClient);
 
     const dimension = options.dimension ?? 768;
     const distance = options.distance ?? 'cosine';
 
-    const schema = new Schema({
-      vectorIndex: new VectorIndexConfig({
-        hnsw: { dimension, distance },
-        embeddingFunction: null, // We pass pre-computed embeddings, no auto-vectorization
-      }),
-    });
+    try {
+      const schema = new Schema({
+        vectorIndex: new VectorIndexConfig({
+          hnsw: { dimension, distance },
+          embeddingFunction: null, // We pass pre-computed embeddings, no auto-vectorization
+        }),
+      });
 
-    const collection = await client.getOrCreateCollection({
-      name: options.collectionName ?? 'memories',
-      schema,
-    });
+      const collection = await client.getOrCreateCollection({
+        name: options.collectionName ?? 'memories',
+        schema,
+      });
 
-    return new SeekDBStore(client, collection, distance);
+      return new SeekDBStore(client, collection, distance, key);
+    } catch (error) {
+      await SeekDBStore.releaseClient(key);
+      throw error;
+    }
   }
 
   // ─── Distance → Score conversion ─────────────────────────────────────
@@ -317,7 +359,10 @@ export class SeekDBStore implements VectorStore {
   }
 
   async close(): Promise<void> {
-    await this.client?.close?.();
+    if (this.isClosed) return;
+    this.isClosed = true;
+
+    await SeekDBStore.releaseClient(this.clientKey);
     this.collection = null;
     this.client = null;
   }
