@@ -27,7 +27,8 @@
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --exclude 'tests/e2e/**' --exclude 'tests/**/seekdb*'",
+    "test": "vitest run --exclude 'tests/e2e/**' --exclude 'tests/**/seekdb*' --exclude 'tests/**/pgvector*'",
+    "test:pgvector": "vitest run tests/unit/storage/pgvector.test.ts",
     "test:watch": "vitest --exclude 'tests/e2e/**' --exclude 'tests/**/seekdb*'",
     "test:e2e": "vitest run tests/e2e/",
     "test:seekdb": "vitest run tests/unit/storage/seekdb.test.ts && vitest run tests/integration/seekdb.test.ts && vitest run tests/integration/seekdb-e2e.test.ts",
@@ -39,6 +40,7 @@
     "commander": "^14.0.3",
     "dotenv": "^16.0.0",
     "express": "^5.2.1",
+    "pg": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -48,6 +50,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9.0.0",
     "seekdb": "^1.2.0",

@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   # ─── Unit + Integration + Regression tests ───────────────────────────
@@ -147,6 +148,42 @@ jobs:
           export LD_LIBRARY_PATH="$CACHE_DIR:$LD_LIBRARY_PATH"
           npm run test:seekdb
         timeout-minutes: 5
+
+  # ─── PgVector tests (PostgreSQL + pgvector) ─────────────────────────
+  test-pgvector:
+    name: PgVector (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: powermem
+          POSTGRES_PASSWORD: powermem
+          POSTGRES_DB: powermem_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U powermem"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run PgVector tests
+        env:
+          PGVECTOR_CONNECTION_STRING: postgresql://powermem:powermem@localhost:5432/powermem_test
+        run: npx vitest run tests/unit/storage/pgvector.test.ts
+        timeout-minutes: 3
 
   # ─── Build verification ──────────────────────────────────────────────
   build:

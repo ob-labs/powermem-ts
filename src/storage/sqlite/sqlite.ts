@@ -35,6 +35,25 @@ export class SQLiteStore implements VectorStore {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // FTS5 virtual table for full-text / BM25 hybrid search
+    try {
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+          id UNINDEXED, content, tokenize='unicode61'
+        )
+      `);
+    } catch {
+      // FTS5 not available — hybrid search will fall back to vector-only
+    }
+  }
+
+  private get hasFts(): boolean {
+    try {
+      this.db.prepare("SELECT 1 FROM memories_fts LIMIT 0").run();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private toRecord(row: { id: string; vector: string; payload: string; created_at: string }): VectorStoreRecord {
@@ -60,6 +79,11 @@ export class SQLiteStore implements VectorStore {
   async insert(id: string, vector: number[], payload: Record<string, unknown>): Promise<void> {
     const stmt = this.db.prepare('INSERT INTO memories (id, vector, payload) VALUES (?, ?, ?)');
     stmt.run(id, JSON.stringify(vector), JSON.stringify(payload));
+    if (this.hasFts) {
+      try {
+        this.db.prepare('INSERT INTO memories_fts (id, content) VALUES (?, ?)').run(id, (payload.data as string) ?? '');
+      } catch { /* FTS sync non-fatal */ }
+    }
   }
 
   async getById(id: string, userId?: string, agentId?: string): Promise<VectorStoreRecord | null> {
@@ -77,10 +101,19 @@ export class SQLiteStore implements VectorStore {
   async update(id: string, vector: number[], payload: Record<string, unknown>): Promise<void> {
     const stmt = this.db.prepare('UPDATE memories SET vector = ?, payload = ? WHERE id = ?');
     stmt.run(JSON.stringify(vector), JSON.stringify(payload), id);
+    if (this.hasFts) {
+      try {
+        this.db.prepare('DELETE FROM memories_fts WHERE id = ?').run(id);
+        this.db.prepare('INSERT INTO memories_fts (id, content) VALUES (?, ?)').run(id, (payload.data as string) ?? '');
+      } catch { /* FTS sync non-fatal */ }
+    }
   }
 
   async remove(id: string): Promise<boolean> {
     const result = this.db.prepare('DELETE FROM memories WHERE id = ?').run(id);
+    if (this.hasFts) {
+      try { this.db.prepare('DELETE FROM memories_fts WHERE id = ?').run(id); } catch { /* ok */ }
+    }
     return result.changes > 0;
   }
 
@@ -146,6 +179,85 @@ export class SQLiteStore implements VectorStore {
     return scored.slice(0, limit);
   }
 
+  /**
+   * Hybrid search — combines vector cosine similarity with BM25 full-text scores.
+   * Requires FTS5 table to be available.
+   *
+   * @param queryVector Dense embedding vector for the query
+   * @param queryText Plain text query for BM25 matching
+   * @param filters Standard filters (userId, agentId, runId)
+   * @param limit Max results
+   * @param vectorWeight Weight for cosine score (default 0.7)
+   * @param textWeight Weight for BM25 score (default 0.3)
+   */
+  async hybridSearch(
+    queryVector: number[],
+    queryText: string,
+    filters: VectorStoreFilter = {},
+    limit = 30,
+    vectorWeight = 0.7,
+    textWeight = 0.3,
+  ): Promise<VectorStoreSearchMatch[]> {
+    // Get vector results
+    const vectorResults = await this.search(queryVector, filters, limit * 2);
+
+    // If no FTS, return vector-only results
+    if (!this.hasFts || !queryText.trim()) {
+      return vectorResults.slice(0, limit);
+    }
+
+    // Get FTS5 BM25 results
+    const ftsRows = this.db
+      .prepare(`SELECT id, rank FROM memories_fts WHERE content MATCH ? ORDER BY rank LIMIT ?`)
+      .all(queryText.replace(/['"]/g, ''), limit * 2) as Array<{ id: string; rank: number }>;
+
+    // FTS5 rank is negative (lower = better), normalize to 0-1
+    const ftsScores = new Map<string, number>();
+    if (ftsRows.length > 0) {
+      const maxRank = Math.abs(ftsRows[ftsRows.length - 1].rank) || 1;
+      for (const row of ftsRows) {
+        // Normalize: rank is negative, convert to positive 0-1 score
+        ftsScores.set(String(row.id), Math.abs(row.rank) / maxRank);
+      }
+    }
+
+    // Combine scores with RRF (Reciprocal Rank Fusion) style blending
+    const combined = new Map<string, VectorStoreSearchMatch>();
+
+    for (const vr of vectorResults) {
+      const ftsScore = ftsScores.get(vr.id) ?? 0;
+      combined.set(vr.id, {
+        ...vr,
+        score: vr.score * vectorWeight + ftsScore * textWeight,
+      });
+    }
+
+    // Add FTS-only matches (not in vector results)
+    const { where, params } = this.buildWhereClause(filters);
+    for (const [id, ftsScore] of ftsScores) {
+      if (!combined.has(id)) {
+        const row = this.db.prepare(`SELECT id, payload FROM memories WHERE id = ?${where.replace(' WHERE ', ' AND ')}`)
+          .get(id, ...params) as { id: string; payload: string } | undefined;
+        if (row) {
+          const payload = JSON.parse(row.payload) as Record<string, unknown>;
+          combined.set(id, {
+            id: String(row.id),
+            content: (payload.data as string) ?? '',
+            score: ftsScore * textWeight,
+            metadata: payload.metadata as Record<string, unknown> | undefined,
+            createdAt: payload.created_at as string | undefined,
+            updatedAt: payload.updated_at as string | undefined,
+            accessCount: (payload.access_count as number) ?? 0,
+          });
+        }
+      }
+    }
+
+    const results = Array.from(combined.values());
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit);
+  }
+
   async count(filters: VectorStoreFilter = {}): Promise<number> {
     const { where, params } = this.buildWhereClause(filters);
     const row = this.db
@@ -177,8 +289,17 @@ export class SQLiteStore implements VectorStore {
   }
 
   async removeAll(filters: VectorStoreFilter = {}): Promise<void> {
-    const { where, params } = this.buildWhereClause(filters);
-    this.db.prepare(`DELETE FROM memories${where}`).run(...params);
+    // Get IDs before deleting for FTS sync
+    if (this.hasFts) {
+      const { where, params } = this.buildWhereClause(filters);
+      const rows = this.db.prepare(`SELECT id FROM memories${where}`).all(...params) as Array<{ id: string }>;
+      this.db.prepare(`DELETE FROM memories${where}`).run(...params);
+      const del = this.db.prepare('DELETE FROM memories_fts WHERE id = ?');
+      for (const row of rows) { try { del.run(row.id); } catch { /* ok */ } }
+    } else {
+      const { where, params } = this.buildWhereClause(filters);
+      this.db.prepare(`DELETE FROM memories${where}`).run(...params);
+    }
   }
 
   async close(): Promise<void> {

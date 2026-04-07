@@ -22,4 +22,11 @@ export interface MemoryProvider {
   deleteAll(params?: FilterParams): Promise<boolean>;
   reset(): Promise<void>;
   close(): Promise<void>;
+
+  // Extended API (optional — not all providers support these)
+  getStatistics?(params?: FilterParams): Promise<Record<string, unknown>>;
+  getUsers?(limit?: number): Promise<string[]>;
+  optimize?(strategy?: string, userId?: string, threshold?: number): Promise<Record<string, unknown>>;
+  exportMemories?(params?: GetAllParams): Promise<MemoryRecord[]>;
+  importMemories?(memories: Array<{ content: string; metadata?: Record<string, unknown>; userId?: string; agentId?: string }>, options?: { infer?: boolean }): Promise<{ imported: number; errors: number }>;
 }

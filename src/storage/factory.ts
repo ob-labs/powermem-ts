@@ -56,3 +56,20 @@ VectorStoreFactory.register('seekdb', async (config) => {
     dimension: config.dimension as number | undefined,
   });
 });
+
+VectorStoreFactory.register('pgvector', async (config) => {
+  const { PgVectorStore } = await import('./pgvector/pgvector.js');
+  return PgVectorStore.create({
+    connectionString: config.connectionString as string | undefined,
+    tableName: config.tableName as string | undefined,
+    dimensions: config.dimensions as number | undefined,
+  });
+});
+
+// Aliases
+VectorStoreFactory.register('postgres', async (config) => {
+  return VectorStoreFactory.create('pgvector', config);
+});
+VectorStoreFactory.register('pg', async (config) => {
+  return VectorStoreFactory.create('pgvector', config);
+});

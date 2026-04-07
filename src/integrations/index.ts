@@ -3,6 +3,7 @@ export type { EmbeddingProvider, BaseEmbedderConfig } from './embeddings/index.j
 export { createLLM, createLLMFromEnv } from './llm/index.js';
 export type { LLMProvider, BaseLLMConfig } from './llm/index.js';
 export type { RerankProvider, BaseRerankConfig } from './rerank/index.js';
+export { OpenAICompatReranker, createReranker, createRerankerFromEnv, createRerankerFnFromConfig } from './rerank/index.js';
 
 // Backward compat: re-export old factory.ts functions
 export { createEmbeddingsFromEnv as _legacyCreateEmbeddingsFromEnv } from './embeddings/factory.js';

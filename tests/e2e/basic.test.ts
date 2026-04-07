@@ -478,7 +478,7 @@ describe('E2E with Ollama', async () => {
       });
 
       const fetched = await memory.get(result.memories[0].memoryId);
-      expect(fetched!.metadata).toEqual({
+      expect(fetched!.metadata).toMatchObject({
         source: 'chat',
         importance: 'high',
         tags: ['test', 'e2e'],
@@ -495,7 +495,7 @@ describe('E2E with Ollama', async () => {
       await memory.update(id, 'updated content');
       const fetched = await memory.get(id);
       expect(fetched!.content).toBe('updated content');
-      expect(fetched!.metadata).toEqual({ keep: true });
+      expect(fetched!.metadata).toMatchObject({ keep: true });
     });
   });
 

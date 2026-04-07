@@ -155,6 +155,9 @@ describe('Feature: Memory CRUD', () => {
     const output = run('memory add --help');
     expect(output).toContain('--user-id');
     expect(output).toContain('--agent-id');
+    expect(output).toContain('--run-id');
+    expect(output).toContain('--metadata');
+    expect(output).toContain('--memory-type');
     expect(output).toContain('--no-infer');
     expect(output).toContain('--scope');
     expect(output).toContain('--category');
@@ -163,6 +166,7 @@ describe('Feature: Memory CRUD', () => {
   it('Scenario: memory search --help shows options', () => {
     const output = run('memory search --help');
     expect(output).toContain('--user-id');
+    expect(output).toContain('--run-id');
     expect(output).toContain('--limit');
     expect(output).toContain('--threshold');
   });
@@ -170,6 +174,7 @@ describe('Feature: Memory CRUD', () => {
   it('Scenario: memory list --help shows options', () => {
     const output = run('memory list --help');
     expect(output).toContain('--user-id');
+    expect(output).toContain('--run-id');
     expect(output).toContain('--limit');
     expect(output).toContain('--offset');
     expect(output).toContain('--sort');

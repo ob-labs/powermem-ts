@@ -27,7 +27,10 @@ export class HttpProvider implements MemoryProvider {
 
   private get headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.apiKey) h['Authorization'] = `Bearer ${this.apiKey}`;
+    if (this.apiKey) {
+      h['Authorization'] = `Bearer ${this.apiKey}`;
+      h['X-API-Key'] = this.apiKey;
+    }
     return h;
   }
 
@@ -143,5 +146,40 @@ export class HttpProvider implements MemoryProvider {
 
   async close(): Promise<void> {
     // HTTP 无持久连接，无需清理
+  }
+
+  // ─── Extended API ──────────────────────────────────────────────────
+
+  async getStatistics(params: FilterParams = {}): Promise<Record<string, unknown>> {
+    const query: Record<string, string> = {};
+    if (params.userId) query['user_id'] = params.userId;
+    if (params.agentId) query['agent_id'] = params.agentId;
+    return this.request<Record<string, unknown>>('GET', '/api/v1/memories/stats', undefined, query);
+  }
+
+  async getUsers(limit?: number): Promise<string[]> {
+    const query: Record<string, string> = {};
+    if (limit !== undefined) query['limit'] = String(limit);
+    const data = await this.request<{ users: string[] }>('GET', '/api/v1/memories/users', undefined, query);
+    return data.users;
+  }
+
+  async exportMemories(params: GetAllParams = {}): Promise<MemoryRecord[]> {
+    const query: Record<string, string> = {};
+    if (params.userId) query['user_id'] = params.userId;
+    if (params.agentId) query['agent_id'] = params.agentId;
+    if (params.limit !== undefined) query['limit'] = String(params.limit);
+    const data = await this.request<{ memories: MemoryRecord[] }>('GET', '/api/v1/memories/export', undefined, query);
+    return data.memories;
+  }
+
+  async importMemories(
+    memories: Array<{ content: string; metadata?: Record<string, unknown>; userId?: string; agentId?: string }>,
+    options?: { infer?: boolean },
+  ): Promise<{ imported: number; errors: number }> {
+    return this.request<{ imported: number; errors: number }>('POST', '/api/v1/memories/import', {
+      memories,
+      infer: options?.infer ?? false,
+    });
   }
 }

@@ -165,7 +165,7 @@ describeIf('SeekDB E2E — full stack (shared instance)', () => {
       infer: false,
     });
     const fetched = await memory.get(result.memories[0].memoryId);
-    expect(fetched!.metadata).toEqual({ tags: ['test', 'seekdb'], nested: { deep: true } });
+    expect(fetched!.metadata).toMatchObject({ tags: ['test', 'seekdb'], nested: { deep: true } });
   });
 
   it('scope and category round-trip', async () => {

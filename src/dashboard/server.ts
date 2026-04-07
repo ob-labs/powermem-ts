@@ -1,117 +1,86 @@
 #!/usr/bin/env node
 /**
- * PowerMem Dashboard — minimal Express server.
- * Serves REST API + static HTML dashboard (matching Python edition's React dashboard).
+ * PowerMem Dashboard — Express server with full REST API.
+ * Modular architecture matching Python FastAPI edition.
  */
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Memory } from '../core/memory.js';
 import type { Embeddings } from '@langchain/core/embeddings';
-import { calculateStatsFromMemories } from '../utils/stats.js';
 import { VERSION } from '../version.js';
+import { loadServerConfig, type ServerConfig } from './config.js';
+import { createAuthMiddleware } from './middleware/auth.js';
+import { createRateLimitMiddleware } from './middleware/rate-limit.js';
+import { createMetricsMiddleware } from './middleware/metrics.js';
+import { createLoggingMiddleware } from './middleware/logging.js';
+import { createSystemRouter } from './routers/system.js';
+import { createMemoriesRouter } from './routers/memories.js';
+import { createAgentsRouter } from './routers/agents.js';
+import { createUsersRouter } from './routers/users.js';
+import { buildOpenAPISpec } from './openapi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export async function createDashboardServer(options: {
+export interface DashboardServerOptions {
   port?: number;
   dbPath?: string;
   embeddings?: Embeddings;
   memory?: Memory;
-} = {}) {
-  const app = express();
-  app.use(express.json());
+  config?: Partial<ServerConfig>;
+}
 
+export async function createDashboardServer(options: DashboardServerOptions = {}) {
+  const app = express();
+  const config = { ...loadServerConfig(), ...options.config };
+
+  app.use(express.json({ limit: '10mb' }));
+
+  // ─── CORS ──────────────────────────────────────────────────────────
+  if (config.corsEnabled) {
+    app.use((_req, res, next) => {
+      res.set('Access-Control-Allow-Origin', config.corsOrigins);
+      res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+      if (_req.method === 'OPTIONS') { res.sendStatus(204); return; }
+      next();
+    });
+  }
+
+  // ─── Middleware ─────────────────────────────────────────────────────
+  app.use(createLoggingMiddleware());
+  app.use(createMetricsMiddleware());
+  app.use(createAuthMiddleware(config));
+  app.use(createRateLimitMiddleware(config));
+
+  // ─── Memory instance ──────────────────────────────────────────────
   const memory = options.memory ?? await Memory.create({
     dbPath: options.dbPath ?? ':memory:',
     embeddings: options.embeddings,
   });
   const startTime = Date.now();
 
-  // ─── REST API ──────────────────────────────────────────────────────
+  // ─── Routers ───────────────────────────────────────────────────────
+  app.use('/api/v1/system', createSystemRouter(memory, startTime));
+  app.use('/api/v1/memories', createMemoriesRouter(memory));
+  app.use('/api/v1/agents', createAgentsRouter(memory));
+  app.use('/api/v1/users', createUsersRouter(memory));
 
-  app.get('/api/v1/system/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok' } });
+  // ─── OpenAPI / Docs ────────────────────────────────────────────────
+  app.get('/openapi.json', (_req, res) => {
+    res.json(buildOpenAPISpec(VERSION));
   });
 
-  app.get('/api/v1/system/status', (_req, res) => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    res.json({
-      success: true,
-      data: {
-        version: VERSION,
-        storageType: 'sqlite',
-        uptime,
-        status: 'running',
-      },
-    });
-  });
-
-  app.get('/api/v1/memories/stats', async (req, res) => {
-    try {
-      const userId = req.query.user_id as string | undefined;
-      const agentId = req.query.agent_id as string | undefined;
-      const all = await memory.getAll({ userId, agentId, limit: 10000 });
-      const stats = calculateStatsFromMemories(
-        all.memories as unknown as Array<Record<string, unknown>>
-      );
-      res.json({ success: true, data: stats });
-    } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
-    }
-  });
-
-  app.get('/api/v1/memories', async (req, res) => {
-    try {
-      const userId = req.query.user_id as string | undefined;
-      const agentId = req.query.agent_id as string | undefined;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const offset = parseInt(req.query.offset as string) || 0;
-      const sortBy = req.query.sort_by as string | undefined;
-      const order = req.query.order as 'asc' | 'desc' | undefined;
-      const result = await memory.getAll({ userId, agentId, limit, offset, sortBy, order });
-      res.json({ success: true, data: result });
-    } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
-    }
-  });
-
-  app.post('/api/v1/memories', async (req, res) => {
-    try {
-      const { content, user_id, agent_id, infer, metadata } = req.body;
-      const result = await memory.add(content, {
-        userId: user_id, agentId: agent_id,
-        infer: infer ?? false, metadata,
-      });
-      res.json({ success: true, data: result });
-    } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
-    }
-  });
-
-  app.delete('/api/v1/memories/:id', async (req, res) => {
-    try {
-      const ok = await memory.delete(req.params.id);
-      res.json({ success: true, data: { deleted: ok } });
-    } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
-    }
-  });
-
-  app.post('/api/v1/memories/search', async (req, res) => {
-    try {
-      const { query, user_id, agent_id, limit } = req.body;
-      const result = await memory.search(query, {
-        userId: user_id, agentId: agent_id, limit,
-      });
-      res.json({ success: true, data: result });
-    } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
-    }
+  app.get('/docs', (_req, res) => {
+    res.send(`<!DOCTYPE html><html><head><title>PowerMem API Docs</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head><body><div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({ url: '/openapi.json', dom_id: '#swagger-ui' })</script>
+</body></html>`);
   });
 
   // ─── Dashboard HTML ────────────────────────────────────────────────
-
   const publicDir = path.join(__dirname, 'public');
   app.get('/dashboard', (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
@@ -119,15 +88,19 @@ export async function createDashboardServer(options: {
   app.use('/dashboard', express.static(publicDir));
 
   // ─── Root ──────────────────────────────────────────────────────────
-
   app.get('/', (_req, res) => {
     res.json({
       name: 'PowerMem TS',
       version: VERSION,
       dashboard: '/dashboard/',
       api: '/api/v1/',
-      docs: '/api/v1/system/status',
+      docs: '/docs',
+      openapi: '/openapi.json',
     });
+  });
+
+  app.get('/robots.txt', (_req, res) => {
+    res.type('text/plain').send('User-agent: *\nDisallow: /\n');
   });
 
   return { app, memory };
@@ -135,15 +108,13 @@ export async function createDashboardServer(options: {
 
 // CLI entry: npx tsx src/dashboard/server.ts
 if (process.argv[1]?.endsWith('server.ts') || process.argv[1]?.endsWith('server.js')) {
-  const port = parseInt(process.env.PORT ?? '8000');
+  const config = loadServerConfig();
 
-  // Try Ollama embeddings, fall back to a simple mock for demo
   let embeddings: Embeddings | undefined;
   try {
     const { OllamaEmbeddings } = await import('@langchain/ollama');
     embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text', baseUrl: 'http://localhost:11434' });
   } catch {
-    // Use a minimal mock embeddings for demo
     const { Embeddings: EmbBase } = await import('@langchain/core/embeddings');
     class DemoEmbeddings extends EmbBase {
       async embedQuery(text: string) { return Array.from({ length: 8 }, (_, i) => text.charCodeAt(i % text.length) / 256); }
@@ -153,9 +124,10 @@ if (process.argv[1]?.endsWith('server.ts') || process.argv[1]?.endsWith('server.
   }
 
   createDashboardServer({ dbPath: process.env.DB_PATH, embeddings }).then(({ app }) => {
-    app.listen(port, () => {
-      console.log(`PowerMem Dashboard running at http://localhost:${port}/dashboard/`);
-      console.log(`API at http://localhost:${port}/api/v1/`);
+    app.listen(config.port, config.host, () => {
+      console.log(`PowerMem Dashboard running at http://${config.host}:${config.port}/dashboard/`);
+      console.log(`API at http://${config.host}:${config.port}/api/v1/`);
+      console.log(`Docs at http://${config.host}:${config.port}/docs`);
     });
   });
 }

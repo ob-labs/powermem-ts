@@ -1,3 +1,20 @@
+/** Multimodal message content part. */
+export interface ContentPart {
+  type: 'text' | 'image_url' | 'audio';
+  text?: string;
+  image_url?: { url: string; detail?: string };
+  audio_url?: string;
+}
+
+/** Multimodal message (matches OpenAI/LangChain message format). */
+export interface MessageInput {
+  role: 'user' | 'assistant' | 'system';
+  content: string | ContentPart[];
+}
+
+/** Content can be a plain string or an array of multimodal messages. */
+export type MemoryContent = string | MessageInput[];
+
 export interface MemoryRecord {
   id: string;
   memoryId: string;
@@ -14,7 +31,7 @@ export interface MemoryRecord {
 }
 
 export interface AddParams {
-  content: string;
+  content: MemoryContent;
   userId?: string;
   agentId?: string;
   runId?: string;
@@ -43,6 +60,7 @@ export interface UpdateParams {
 export interface GetAllParams {
   userId?: string;
   agentId?: string;
+  runId?: string;
   limit?: number;
   offset?: number;
   sortBy?: string;
@@ -52,6 +70,7 @@ export interface GetAllParams {
 export interface FilterParams {
   userId?: string;
   agentId?: string;
+  runId?: string;
 }
 
 export interface BatchItem {

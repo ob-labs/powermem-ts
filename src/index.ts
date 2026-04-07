@@ -1,4 +1,4 @@
-export { Memory } from './core/memory.js';
+export { Memory, Memory as AsyncMemory } from './core/memory.js';
 export { NativeProvider } from './core/native-provider.js';
 export { SeekDBStore } from './storage/seekdb/seekdb.js';
 export type { SeekDBStoreOptions } from './storage/seekdb/seekdb.js';
@@ -14,6 +14,9 @@ export type {
 
 export type {
   MemoryRecord,
+  MemoryContent,
+  MessageInput,
+  ContentPart,
   AddParams,
   SearchParams,
   UpdateParams,
@@ -22,6 +25,8 @@ export type {
   BatchItem,
   BatchOptions,
 } from './types/memory.js';
+
+export { extractTextFromContent, hasVisionContent, hasAudioContent, extractImageUrls, parseVisionMessages, parseAudioMessages } from './utils/messages.js';
 
 export type {
   AddResult,
@@ -48,6 +53,8 @@ export { getVersion, VERSION } from './version.js';
 
 // ─── Storage ──────────────────────────────────────────────────────────────
 export { SQLiteStore } from './storage/sqlite/sqlite.js';
+export { PgVectorStore } from './storage/pgvector/pgvector.js';
+export type { PgVectorStoreOptions } from './storage/pgvector/pgvector.js';
 export { VectorStoreFactory } from './storage/factory.js';
 export { StorageAdapter } from './storage/adapter.js';
 export type { GraphStoreBase } from './storage/base.js';
@@ -55,6 +62,10 @@ export type { GraphStoreBase } from './storage/base.js';
 // ─── Integrations ─────────────────────────────────────────────────────────
 export { Embedder, createEmbeddings, createEmbeddingsFromEnv } from './integrations/index.js';
 export { createLLM, createLLMFromEnv } from './integrations/index.js';
+export { OpenAICompatReranker, createReranker, createRerankerFromEnv, createRerankerFnFromConfig } from './integrations/index.js';
+export type { RerankProvider, BaseRerankConfig } from './integrations/index.js';
+export type { SparseEmbedding, SparseEmbedder, BM25Config } from './integrations/embeddings/sparse.js';
+export { BM25SparseEmbedder, tokenize, tokenizeCJK, sparseDotProduct, ENGLISH_STOPWORDS, CHINESE_STOPWORDS } from './integrations/embeddings/sparse.js';
 
 // ─── Intelligence ─────────────────────────────────────────────────────────
 export { MemoryOptimizer, ImportanceEvaluator, IntelligenceManager } from './intelligence/index.js';
@@ -70,6 +81,14 @@ export { UserMemory } from './user-memory/index.js';
 export { SQLiteUserProfileStore } from './user-memory/index.js';
 export { QueryRewriter } from './user-memory/index.js';
 export type { UserProfile, UserProfileStore } from './user-memory/index.js';
+
+// ─── Observability ───────────────────────────────────────────────────────
+export { TelemetryCollector, AuditLogger } from './observability/index.js';
+export type { TelemetryEvent, AuditEntry } from './observability/index.js';
+
+// ─── Sub-storage ─────────────────────────────────────────────────────────
+export { SubStorageRouter, SubStoreMigrationManager } from './storage/sub-storage.js';
+export type { SubStoreConfig, MigrationState, MigrationResult, MigrationStatus } from './storage/sub-storage.js';
 
 // ─── Utils ────────────────────────────────────────────────────────────────
 export { calculateStatsFromMemories } from './utils/stats.js';

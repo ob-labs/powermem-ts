@@ -1,6 +1,9 @@
 import type { Embeddings } from '@langchain/core/embeddings';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { SearchHit } from './responses.js';
+import type { MemoryConfigInput } from '../configs.js';
+import type { GraphStoreBase } from '../storage/base.js';
+import type { SubStorageRouter } from '../storage/sub-storage.js';
 
 export interface InitOptions {
   homeDir?: string;
@@ -17,6 +20,10 @@ export type RerankerFn = (
 ) => Promise<SearchHit[]>;
 
 export interface MemoryOptions {
+  // ─── Config-driven (Python parity) ──────────────────────────
+  /** Full config object — auto-resolved via autoConfig() if omitted. */
+  config?: MemoryConfigInput;
+
   // ─── HttpProvider (backward compat) ──────────────────────────
   serverUrl?: string;
   apiKey?: string;
@@ -42,6 +49,12 @@ export interface MemoryOptions {
 
   // ─── SeekDB backend ─────────────────────────────────────────────
   seekdb?: SeekDBOptions;
+
+  // ─── Graph store (optional) ────────────────────────────────────
+  graphStore?: GraphStoreBase;
+
+  // ─── Sub-storage routing (optional) ───────────────────────────
+  subStorageRouter?: SubStorageRouter;
 }
 
 export interface SeekDBOptions {

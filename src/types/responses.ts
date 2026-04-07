@@ -16,6 +16,7 @@ export interface SearchResult {
   results: SearchHit[];
   total: number;
   query: string;
+  relations?: Array<Record<string, unknown>>;
 }
 
 export interface MemoryListResult {

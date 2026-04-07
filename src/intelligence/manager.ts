@@ -25,12 +25,14 @@ export class IntelligenceManager {
     this.importanceEvaluator = new ImportanceEvaluator();
   }
 
-  /** Enhance metadata with importance score. */
+  /** Enhance metadata with importance score. Preserves user-provided importance. */
   processMetadata(
     content: string,
     metadata?: Record<string, unknown>
   ): Record<string, unknown> {
     if (!this.enabled) return metadata ?? {};
+    // Don't overwrite user-provided importance
+    if (metadata?.importance !== undefined) return metadata;
     const importance = this.importanceEvaluator.evaluateImportance(content, metadata);
     return { ...(metadata ?? {}), importance };
   }

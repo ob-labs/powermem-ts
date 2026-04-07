@@ -21,18 +21,33 @@ export function registerMemoryCommands(program: Command): void {
     .description('Add a memory')
     .option('-u, --user-id <id>', 'User ID')
     .option('-a, --agent-id <id>', 'Agent ID')
+    .option('-r, --run-id <id>', 'Run ID')
+    .option('-m, --metadata <json>', 'Metadata as JSON string')
+    .option('--memory-type <type>', 'Memory type (maps to category)')
     .option('--no-infer', 'Skip LLM fact extraction')
     .option('-s, --scope <scope>', 'Memory scope')
     .option('-c, --category <cat>', 'Memory category')
     .action(async (content: string, opts) => {
       const mem = await getMemory(program);
       try {
+        let metadata: Record<string, unknown> | undefined;
+        if (opts.metadata) {
+          try {
+            metadata = JSON.parse(opts.metadata);
+          } catch {
+            console.error('Invalid JSON for --metadata');
+            process.exitCode = 1;
+            return;
+          }
+        }
         const result = await mem.add(content, {
           userId: opts.userId,
           agentId: opts.agentId,
+          runId: opts.runId,
+          metadata,
           infer: opts.infer !== false,
           scope: opts.scope,
-          category: opts.category,
+          category: opts.memoryType ?? opts.category,
         });
         if (program.opts().json) {
           console.log(JSON.stringify(result, null, 2));
@@ -52,6 +67,7 @@ export function registerMemoryCommands(program: Command): void {
     .description('Search memories')
     .option('-u, --user-id <id>', 'User ID')
     .option('-a, --agent-id <id>', 'Agent ID')
+    .option('-r, --run-id <id>', 'Run ID')
     .option('-l, --limit <n>', 'Max results', '10')
     .option('-t, --threshold <n>', 'Min similarity score')
     .action(async (query: string, opts) => {
@@ -60,6 +76,7 @@ export function registerMemoryCommands(program: Command): void {
         const result = await mem.search(query, {
           userId: opts.userId,
           agentId: opts.agentId,
+          runId: opts.runId,
           limit: parseInt(opts.limit, 10),
           threshold: opts.threshold ? parseFloat(opts.threshold) : undefined,
         });
@@ -82,6 +99,7 @@ export function registerMemoryCommands(program: Command): void {
     .description('List all memories')
     .option('-u, --user-id <id>', 'User ID')
     .option('-a, --agent-id <id>', 'Agent ID')
+    .option('-r, --run-id <id>', 'Run ID')
     .option('-l, --limit <n>', 'Max results', '20')
     .option('-o, --offset <n>', 'Offset', '0')
     .option('--sort <field>', 'Sort by field (created_at, updated_at)')
@@ -92,6 +110,7 @@ export function registerMemoryCommands(program: Command): void {
         const result = await mem.getAll({
           userId: opts.userId,
           agentId: opts.agentId,
+          runId: opts.runId,
           limit: parseInt(opts.limit, 10),
           offset: parseInt(opts.offset, 10),
           sortBy: opts.sort,
@@ -152,6 +171,7 @@ export function registerMemoryCommands(program: Command): void {
     .description('Delete all memories')
     .option('-u, --user-id <id>', 'User ID')
     .option('-a, --agent-id <id>', 'Agent ID')
+    .option('-r, --run-id <id>', 'Run ID')
     .option('--confirm', 'Skip confirmation')
     .action(async (opts) => {
       if (!opts.confirm) {
@@ -162,7 +182,7 @@ export function registerMemoryCommands(program: Command): void {
       }
       const mem = await getMemory(program);
       try {
-        await mem.deleteAll({ userId: opts.userId, agentId: opts.agentId });
+        await mem.deleteAll({ userId: opts.userId, agentId: opts.agentId, runId: opts.runId });
         console.log('Deleted.');
       } finally {
         await mem.close();
