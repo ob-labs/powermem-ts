@@ -2,8 +2,8 @@
  * PermissionController tests.
  */
 import { describe, it, expect } from 'vitest';
-import { PermissionController } from '../../../src/agent/components/permission-controller.js';
-import { AccessPermission } from '../../../src/agent/types.js';
+import { PermissionController } from '../../../src/powermem/agent/components/permission-controller.js';
+import { AccessPermission } from '../../../src/powermem/agent/types.js';
 
 describe('PermissionController', () => {
   it('default permissions allow READ', async () => {

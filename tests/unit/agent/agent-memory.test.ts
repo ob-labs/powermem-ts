@@ -2,9 +2,9 @@
  * AgentMemory tests — port of Python regression/test_scenario_3_multi_agent.py.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { Memory } from '../../../src/core/memory.js';
-import { AgentMemory } from '../../../src/agent/agent.js';
-import { MemoryScope, AccessPermission } from '../../../src/agent/types.js';
+import { Memory } from '../../../src/powermem/core/memory.js';
+import { AgentMemory } from '../../../src/powermem/agent/agent.js';
+import { MemoryScope, AccessPermission } from '../../../src/powermem/agent/types.js';
 import { MockEmbeddings } from '../../mocks.js';
 
 describe('AgentMemory', () => {

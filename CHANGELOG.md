@@ -75,13 +75,13 @@ Complete TypeScript replication of Python `oceanbase/powermem`. 89 source files,
 
 ---
 
-## v0.1.0 — NativeProvider (2026-04-01)
+## v0.1.0 — TypeScript Runtime (2026-04-01)
 
 First release with pure TypeScript implementation. **Zero Python dependency.**
 
 ### Highlights
 
-- **NativeProvider** replaces the Python subprocess backend — `Memory.create()` now runs entirely in TypeScript
+- **TypeScript runtime** replaces the Python subprocess backend — `Memory.create()` now runs entirely in TypeScript
 - **SQLite storage** via `better-sqlite3` — persistent, single-file database at `~/.powermem/memories.db`
 - **LangChain.js integration** — plug in any `@langchain/*` provider for embeddings and LLM
 - **Intelligent memory add** (`infer=true`) — LLM extracts atomic facts, deduplicates against existing memories, decides ADD/UPDATE/DELETE/NONE
@@ -94,7 +94,7 @@ First release with pure TypeScript implementation. **Zero Python dependency.**
 ```
 Memory.create()
   ├─ serverUrl provided → HttpProvider (backward compat)
-  └─ default            → NativeProvider
+  └─ default            → local Memory runtime
                             ├─ SQLite (better-sqlite3)
                             ├─ Embeddings (@langchain/core)
                             ├─ LLM inference (@langchain/core)
@@ -126,7 +126,7 @@ const memory = await Memory.create(); // reads EMBEDDING_PROVIDER, LLM_PROVIDER,
 
 | Method | Description |
 |--------|-------------|
-| `Memory.create(options?)` | Create instance (NativeProvider by default) |
+| `Memory.create(options?)` | Create instance (local runtime by default) |
 | `Memory.init()` | No-op (retained for backward compat) |
 | `add(content, options?)` | Add memory (with optional LLM fact extraction) |
 | `search(query, options?)` | Semantic similarity search |

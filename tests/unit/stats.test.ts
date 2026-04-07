@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateStatsFromMemories } from '../../src/utils/stats.js';
+import { calculateStatsFromMemories } from '../../src/powermem/utils/stats.js';
 
 describe('calculateStatsFromMemories', () => {
   it('returns zeros for empty array', () => {

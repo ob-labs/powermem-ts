@@ -8,11 +8,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { Memory } from '../../src/core/memory.js';
-import { SeekDBStore } from '../../src/storage/seekdb/seekdb.js';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { SeekDBStore } from '../../src/powermem/storage/seekdb/seekdb.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
-import { calculateStatsFromMemories } from '../../src/utils/stats.js';
+import { calculateStatsFromMemories } from '../../src/powermem/utils/stats.js';
 
 async function tryCreateStore(tmpDir: string, name: string, dim = 8) {
   try {

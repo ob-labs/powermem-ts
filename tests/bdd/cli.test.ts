@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const CLI = 'npx tsx src/cli/main.ts';
+const CLI = 'npx tsx src/powermem/cli/main.ts';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmem-bdd-'));
 const dbPath = path.join(tmpDir, 'test.db');
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Embedder } from '../../src/integrations/embeddings/embedder.js';
+import { Embedder } from '../../src/powermem/integrations/embeddings/embedder.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('Embedder', () => {

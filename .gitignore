@@ -238,3 +238,5 @@ coverage/
 
 # Claude Code
 .claude/
+
+.cursorignore

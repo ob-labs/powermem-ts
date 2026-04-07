@@ -7,7 +7,7 @@ import { execSync } from 'node:child_process';
 
 function runCli(args: string): string {
   try {
-    return execSync(`npx tsx src/cli/main.ts ${args}`, {
+    return execSync(`npx tsx src/powermem/cli/main.ts ${args}`, {
       cwd: process.cwd(),
       encoding: 'utf-8',
       timeout: 10000,

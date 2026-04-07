@@ -2,8 +2,8 @@
  * Memory optimizer tests — port of Python unit/intelligence/test_memory_optimizer.py
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { MemoryOptimizer } from '../../../src/intelligence/memory-optimizer.js';
-import { SQLiteStore } from '../../../src/storage/sqlite/sqlite.js';
+import { MemoryOptimizer } from '../../../src/powermem/intelligence/memory-optimizer.js';
+import { SQLiteStore } from '../../../src/powermem/storage/sqlite/sqlite.js';
 
 describe('MemoryOptimizer', () => {
   let store: SQLiteStore;

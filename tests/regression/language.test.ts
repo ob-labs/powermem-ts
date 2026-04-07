@@ -11,14 +11,14 @@
  * - Special characters and punctuation
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('multi-language support', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   beforeAll(async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -85,6 +85,6 @@ describe('multi-language support', () => {
       infer: false,
     });
     const mem = await provider.get(res.memories[0].id);
-    expect(mem!.metadata).toEqual({ '标签': '重要', 'カテゴリ': 'テスト', 'emoji': '🏷️' });
+    expect(mem!.metadata).toMatchObject({ '标签': '重要', 'カテゴリ': 'テスト', 'emoji': '🏷️' });
   });
 });

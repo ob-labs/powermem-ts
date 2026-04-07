@@ -2,23 +2,24 @@
  * Tests targeting specific uncovered lines/branches to close coverage gaps.
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
-import { NativeProvider } from '../../src/core/native-provider.js';
-import { SQLiteStore } from '../../src/storage/sqlite/sqlite.js';
-import { PowerMemError } from '../../src/errors/index.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { SQLiteStore } from '../../src/powermem/storage/sqlite/sqlite.js';
+import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
-// ── memory.ts:41-42 — HttpProvider (serverUrl) path ──────────────────────
+// ── memory.ts — explicit store injection path ────────────────────────────
 
-describe('Memory.create with serverUrl', () => {
-  it('creates HttpProvider when serverUrl is provided', async () => {
-    // We can't actually connect, but we can verify it creates without throwing
-    // during construction (HttpProvider is lazy — no connection until first call)
+describe('Memory.create with explicit store', () => {
+  it('uses the injected store instance directly', async () => {
+    const store = new SQLiteStore(':memory:');
     const memory = await Memory.create({
-      serverUrl: 'http://127.0.0.1:19999',
+      store,
+      embeddings: new MockEmbeddings(),
     });
-    expect(memory).toBeDefined();
-    await memory.close(); // no-op for HttpProvider
+    const result = await memory.add('injected store', { infer: false });
+    expect(result.memories).toHaveLength(1);
+    expect(await memory.get(result.memories[0].id)).not.toBeNull();
+    await memory.close();
   });
 });
 
@@ -105,15 +106,15 @@ describe('SQLiteStore filters', () => {
 
 // ── index.ts:319 — update throws for non-existent ID ─────────────────────
 
-describe('NativeProvider edge cases', () => {
-  let provider: NativeProvider;
+describe('Memory edge cases', () => {
+  let provider: Memory;
 
   afterEach(async () => {
     if (provider) await provider.close();
   });
 
   it('update throws for non-existent memory', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -129,7 +130,7 @@ describe('NativeProvider edge cases', () => {
 
   it('update metadata only (no content change) does not re-embed', async () => {
     const embeddings = new MockEmbeddings();
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings,
       dbPath: ':memory:',
     });
@@ -151,7 +152,7 @@ describe('NativeProvider edge cases', () => {
     const origLlmKey = process.env.LLM_API_KEY;
     delete process.env.LLM_API_KEY;
 
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -165,7 +166,7 @@ describe('NativeProvider edge cases', () => {
   });
 
   it('search with runId filter works end-to-end', async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });
@@ -180,7 +181,7 @@ describe('NativeProvider edge cases', () => {
 
 // ── index.ts:70 — mkdir for db directory ──────────────────────────────────
 
-describe('NativeProvider with file-based DB', () => {
+describe('Memory with file-based DB', () => {
   it('creates db directory if it does not exist', async () => {
     const fs = await import('node:fs');
     const os = await import('node:os');
@@ -188,7 +189,7 @@ describe('NativeProvider with file-based DB', () => {
     const tmpDir = path.join(os.tmpdir(), `powermem-test-${Date.now()}`);
     const dbPath = path.join(tmpDir, 'sub', 'test.db');
 
-    const provider = await NativeProvider.create({
+    const provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath,
     });
@@ -205,7 +206,7 @@ describe('NativeProvider with file-based DB', () => {
 
 // ── index.ts:76 — embeddings fallback to env (env-based creation) ────────
 
-describe('NativeProvider env-based embeddings fallback', () => {
+describe('Memory env-based embeddings fallback', () => {
   it('uses createEmbeddingsFromEnv when embeddings not passed', async () => {
     // Set env vars so the factory can create OpenAI embeddings
     const origProvider = process.env.EMBEDDING_PROVIDER;
@@ -216,7 +217,7 @@ describe('NativeProvider env-based embeddings fallback', () => {
     process.env.EMBEDDING_MODEL = 'text-embedding-3-small';
 
     // This will create OpenAI embeddings from env (won't actually call API)
-    const provider = await NativeProvider.create({ dbPath: ':memory:' });
+    const provider = await Memory.create({ dbPath: ':memory:' });
     expect(provider).toBeDefined();
     await provider.close();
 
@@ -240,7 +241,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.LLM_API_KEY = 'test-key';
 
     const { createLLMFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     // @langchain/anthropic is not installed in dev
     await expect(createLLMFromEnv()).rejects.toThrow('@langchain/anthropic');
@@ -251,7 +252,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.LLM_API_KEY = 'test-key';
 
     const { createLLMFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     const llm = await createLLMFromEnv();
     expect(llm).toBeDefined();
@@ -262,7 +263,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.EMBEDDING_API_KEY = 'test-key';
 
     const { createEmbeddingsFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     const embeddings = await createEmbeddingsFromEnv();
     expect(embeddings).toBeDefined();

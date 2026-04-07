@@ -1,17 +1,43 @@
 /**
- * Data correctness tests — prove that data written via CLI or API
+ * Data correctness tests — prove that data written via API
  * is stored accurately and returned correctly through all output paths.
  *
- * Requires server running on port 8000.
+ * Uses an isolated in-process server instead of relying on a shared localhost instance.
  */
-import { describe, it, expect } from 'vitest';
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createServerApp } from '../../src/server/main.js';
+import type { Memory } from '../../src/powermem/core/memory.js';
+import { MockEmbeddings } from '../mocks.js';
 
-const API = 'http://localhost:8000/api/v1';
+let server: Server;
+let memory: Memory;
+let apiBase = '';
+
+beforeAll(async () => {
+  const appState = await createServerApp({
+    dbPath: ':memory:',
+    embeddings: new MockEmbeddings(),
+  });
+  memory = appState.memory;
+  server = appState.app.listen(0);
+  await new Promise<void>((resolve) => server.once('listening', resolve));
+  const { port } = server.address() as AddressInfo;
+  apiBase = `http://127.0.0.1:${port}/api/v1`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+  await memory.close();
+});
 
 async function api(endpoint: string, opts: RequestInit = {}): Promise<any> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch(`${API}${endpoint}`, {
+      const res = await fetch(`${apiBase}${endpoint}`, {
         headers: { 'Content-Type': 'application/json' },
         ...opts,
       });
@@ -25,18 +51,7 @@ async function api(endpoint: string, opts: RequestInit = {}): Promise<any> {
   }
 }
 
-async function serverReady(): Promise<boolean> {
-  try { const r = await fetch(`${API}/system/health`); return r.ok; }
-  catch { return false; }
-}
-
-describe('Data Correctness: Input → Storage → Output', async () => {
-  const ready = await serverReady();
-  if (!ready) {
-    it.skip('Server not running', () => {});
-    return;
-  }
-
+describe('Data Correctness: Input → Storage → Output', () => {
   // ═══════════════════════════════════════════════════════════════
   // Feature: API Create → API Read (round-trip fidelity)
   // ═══════════════════════════════════════════════════════════════

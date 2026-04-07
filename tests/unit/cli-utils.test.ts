@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { truncate, formatMemoryTable, formatSearchTable, formatStats } from '../../src/cli/utils/output.js';
-import { parseEnvLines, formatEnvValue, updateEnvFile, readEnvFile } from '../../src/cli/utils/envfile.js';
+import { truncate, formatMemoryTable, formatSearchTable, formatStats } from '../../src/powermem/cli/utils/output.js';
+import { parseEnvLines, formatEnvValue, updateEnvFile, readEnvFile } from '../../src/powermem/cli/utils/envfile.js';
 
 describe('output utils', () => {
   it('truncate shortens long strings', () => {

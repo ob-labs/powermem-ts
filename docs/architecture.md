@@ -13,11 +13,10 @@ Three storage backends:
 
 ```
 src/
-├── core/                  Memory facade, NativeProvider, HttpProvider, Inferrer
-│   ├── memory.ts          Main entry — create(), add(), search(), get(), update(), delete()
+├── core/                  Memory facade, HttpProvider, Inferrer
+│   ├── memory.ts          Main entry + local runtime — create(), add(), search(), get(), update(), delete()
 │   │                      getStatistics(), getUsers(), optimize(), exportMemories(),
 │   │                      importMemories(), migrateToSubStore()
-│   ├── native-provider.ts Local implementation — embedder + inferrer + intelligence + graph + sub-storage
 │   ├── http-provider.ts   Remote client — talks to dashboard REST API
 │   ├── provider.ts        MemoryProvider interface
 │   └── inferrer.ts        LLM-driven fact extraction + action decisions
@@ -84,7 +83,7 @@ src/
 │       └── users.ts       User profiles + user-scoped memories
 │
 ├── agent/                 AgentMemory — multi-agent scope/permission/collaboration
-├── user-memory/           UserMemory — profile extraction, query rewriting
+├── user_memory/           UserMemory — profile extraction, query rewriting
 ├── configs.ts             Zod schemas for MemoryConfig
 ├── config-loader.ts       autoConfig(), loadConfigFromEnv(), createConfig()
 └── index.ts               Public exports (90+ symbols)
@@ -103,7 +102,7 @@ Memory.create(options)
      ├─ Resolve LLM: explicit > config-driven > env-based (optional)
      ├─ Resolve Reranker: explicit > config-driven (optional)
      ├─ Create IntelligenceManager (if decay enabled)
-     └─ NativeProvider.create(store, embedder, inferrer, ...)
+     └─ return local Memory runtime
 ```
 
 ### Intelligent add (infer=true)
@@ -262,7 +261,7 @@ pmem shell
 
 | Issue #7 Section | Status | Details |
 |---|---|---|
-| 1. Entry API & Config | Done | Config-driven Memory.create(), AsyncMemory alias |
+| 1. Entry API & Config | Done | Config-driven Memory.create(), sync-only Memory API |
 | 2. Storage backends | Done | SQLite + SeekDB + PgVector |
 | 3. Graph + Hybrid search | Done (scaffold) | Graph wiring + FTS5 hybrid search + BM25 sparse |
 | 4. Embeddings & Multimodal | Done | 20+ providers, multimodal add(), vision/audio parsing |

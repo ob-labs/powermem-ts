@@ -2,8 +2,8 @@
  * ScopeController tests.
  */
 import { describe, it, expect } from 'vitest';
-import { ScopeController } from '../../../src/agent/components/scope-controller.js';
-import { MemoryScope } from '../../../src/agent/types.js';
+import { ScopeController } from '../../../src/powermem/agent/components/scope-controller.js';
+import { MemoryScope } from '../../../src/powermem/agent/types.js';
 
 describe('ScopeController', () => {
   it('defaults to PRIVATE scope', async () => {

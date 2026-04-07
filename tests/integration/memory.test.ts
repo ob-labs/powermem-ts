@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
 describe('Memory facade', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { Embeddings } from '@langchain/core/embeddings';
 
 class MockEmbed extends Embeddings {
@@ -59,12 +59,5 @@ describe('Memory extended API', () => {
 
   it('migrateToSubStore throws when no router', async () => {
     await expect(mem.migrateToSubStore('test')).rejects.toThrow('No SubStorageRouter');
-  });
-});
-
-describe('AsyncMemory alias', () => {
-  it('AsyncMemory === Memory', async () => {
-    const { AsyncMemory } = await import('../../src/index.js');
-    expect(AsyncMemory).toBe(Memory);
   });
 });

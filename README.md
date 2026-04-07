@@ -204,7 +204,7 @@ npx pmem shell  # Interactive REPL
 ## API Server
 
 ```bash
-npx tsx src/dashboard/server.ts
+npx tsx src/server/cli/server.ts
 # → http://localhost:8000/
 # → http://localhost:8000/docs (Swagger UI)
 # → http://localhost:8000/openapi.json
@@ -231,7 +231,7 @@ npx tsx src/dashboard/server.ts
 
 ```
 src/
-├── core/           Memory facade, NativeProvider, HttpProvider, Inferrer
+├── core/           Memory facade, HttpProvider, Inferrer
 ├── storage/        VectorStore interface, SQLiteStore, SeekDBStore, PgVectorStore, SubStorageRouter
 ├── integrations/   Embeddings, LLM, Rerank — registry-based factories + providers
 ├── intelligence/   IntelligenceManager, Ebbinghaus decay, MemoryOptimizer, ImportanceEvaluator
@@ -241,7 +241,7 @@ src/
 ├── cli/            Commander.js CLI (config, memory, stats, manage, shell)
 ├── dashboard/      Express server + middleware (auth, rate-limit, metrics, logging) + routers
 ├── agent/          AgentMemory, scope/permission/collaboration management
-└── user-memory/    UserMemory, query rewrite, SQLite profile storage
+└── user_memory/    UserMemory, query rewrite, SQLite profile storage
 ```
 
 ## Testing

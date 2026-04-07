@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BM25SparseEmbedder, tokenize, tokenizeCJK, sparseDotProduct, ENGLISH_STOPWORDS, CHINESE_STOPWORDS } from '../../src/integrations/embeddings/sparse.js';
+import { BM25SparseEmbedder, tokenize, tokenizeCJK, sparseDotProduct, ENGLISH_STOPWORDS, CHINESE_STOPWORDS } from '../../src/powermem/integrations/embeddings/sparse.js';
 
 describe('BM25SparseEmbedder', () => {
   it('produces sparse vectors with indices and values', async () => {

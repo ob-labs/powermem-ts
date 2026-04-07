@@ -8,7 +8,7 @@
  * - Agent isolation: different agents don't leak data
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 

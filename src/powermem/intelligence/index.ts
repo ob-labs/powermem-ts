@@ -1,0 +1,10 @@
+export { computeDecayFactor, applyDecay } from './ebbinghaus-algorithm.js';
+export type { DecayParams } from './ebbinghaus-algorithm.js';
+export { MemoryOptimizer } from './memory-optimizer.js';
+export type { DeduplicateResult, CompressResult } from './memory-optimizer.js';
+export { ImportanceEvaluator } from './importance-evaluator.js';
+export { IntelligenceManager } from './manager.js';
+export type { IntelligenceConfig } from './manager.js';
+export { IntelligentMemoryManager } from './intelligent-memory-manager.js';
+export { EbbinghausIntelligencePlugin, createIntelligencePlugin } from './plugin.js';
+export type { IntelligencePlugin } from './plugin.js';

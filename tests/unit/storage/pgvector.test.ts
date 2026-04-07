@@ -6,7 +6,7 @@
  * Run: PGDATABASE=powermem_test npx vitest run tests/unit/storage/pgvector.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { PgVectorStore } from '../../../src/storage/pgvector/pgvector.js';
+import { PgVectorStore } from '../../../src/powermem/storage/pgvector/pgvector.js';
 
 const TEST_TABLE = `pgvector_test_${Date.now()}`;
 const DIMS = 8; // small for testing
@@ -244,7 +244,7 @@ describe.skipIf(!canRun)('PgVectorStore', () => {
   });
 
   it('VectorStoreFactory creates pgvector', async () => {
-    const { VectorStoreFactory } = await import('../../../src/storage/factory.js');
+    const { VectorStoreFactory } = await import('../../../src/powermem/storage/factory.js');
     const s = await VectorStoreFactory.create('pgvector', {
       connectionString: CONNECTION,
       tableName: `factory_test_${Date.now()}`,

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { SeekDBStore } from '../../../src/storage/seekdb/seekdb.js';
+import { SeekDBStore } from '../../../src/powermem/storage/seekdb/seekdb.js';
 
 /** Try to create a SeekDBStore — returns null if seekdb native bindings unavailable */
 async function tryCreateStore(tmpDir: string, collectionName: string) {

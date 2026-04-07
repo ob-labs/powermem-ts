@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createEmbeddingsFromEnv, createLLMFromEnv } from '../../src/integrations/factory.js';
+import { createEmbeddingsFromEnv, createLLMFromEnv } from '../../src/powermem/integrations/factory.js';
 
 describe('provider-factory', () => {
   const originalEnv = { ...process.env };

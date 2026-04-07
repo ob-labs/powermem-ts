@@ -6,11 +6,11 @@
  * to ensure SQLite ORDER BY json_extract works correctly across all axes.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('getAll sorting — combinatorial', () => {
-  let provider: NativeProvider;
+  let provider: Memory;
 
   // Seed data: 5 records with varying timestamps and categories
   const records = [
@@ -22,7 +22,7 @@ describe('getAll sorting — combinatorial', () => {
   ];
 
   beforeAll(async () => {
-    provider = await NativeProvider.create({
+    provider = await Memory.create({
       embeddings: new MockEmbeddings(),
       dbPath: ':memory:',
     });

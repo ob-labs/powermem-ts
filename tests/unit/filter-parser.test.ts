@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAdvancedFilters } from '../../src/utils/filter-parser.js';
+import { parseAdvancedFilters } from '../../src/powermem/utils/filter-parser.js';
 
 describe('parseAdvancedFilters', () => {
   it('returns undefined for empty/null', () => {
