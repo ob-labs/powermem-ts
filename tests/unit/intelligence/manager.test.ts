@@ -2,7 +2,7 @@
  * IntelligenceManager tests.
  */
 import { describe, it, expect } from 'vitest';
-import { IntelligenceManager } from '../../../src/intelligence/manager.js';
+import { IntelligenceManager } from '../../../src/powermem/intelligence/manager.js';
 
 describe('IntelligenceManager', () => {
   it('disabled manager returns metadata unchanged', () => {

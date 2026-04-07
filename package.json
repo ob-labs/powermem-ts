@@ -14,7 +14,8 @@
     }
   },
   "bin": {
-    "pmem": "./dist/cli.js"
+    "pmem": "./dist/cli.js",
+    "powermem-server": "./dist/server.js"
   },
   "files": [
     "dist"

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NativeProvider } from '../../../src/core/native-provider.js';
+import { NativeProvider } from '../../helpers/native-provider-compat.js';
 import { MockEmbeddings, MockLLM } from '../../mocks.js';
 
 describe('NativeProvider', () => {

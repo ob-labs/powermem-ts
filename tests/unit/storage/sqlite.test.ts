@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SQLiteStore } from '../../../src/storage/sqlite/sqlite.js';
+import { SQLiteStore } from '../../../src/powermem/storage/sqlite/sqlite.js';
 
 describe('SQLiteStore', () => {
   let store: SQLiteStore;

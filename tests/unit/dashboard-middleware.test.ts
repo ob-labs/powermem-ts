@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createDashboardServer } from '../../src/dashboard/server.js';
-import { Memory } from '../../src/core/memory.js';
-import { SQLiteStore } from '../../src/storage/sqlite/sqlite.js';
+import { createServerApp } from '../../src/server/main.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { SQLiteStore } from '../../src/powermem/storage/sqlite/sqlite.js';
 import { Embeddings } from '@langchain/core/embeddings';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,7 +16,7 @@ class MockEmbeddings extends Embeddings {
 async function createTestServer(config: Record<string, unknown> = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dash-mw-'));
   const mem = await Memory.create({ dbPath: path.join(tmp, 'test.db'), embeddings: new MockEmbeddings({}) });
-  const { app, memory } = await createDashboardServer({
+  const { app, memory } = await createServerApp({
     memory: mem,
     config: { authEnabled: true, apiKeys: ['valid-key'], rateLimitEnabled: false, ...config } as any,
   });

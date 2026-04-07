@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cosineSimilarity } from '../../src/utils/search.js';
+import { cosineSimilarity } from '../../src/powermem/utils/search.js';
 
 describe('cosineSimilarity', () => {
   it('returns 1.0 for identical vectors', () => {

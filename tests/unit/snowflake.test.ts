@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SnowflakeIDGenerator } from '../../src/utils/snowflake.js';
+import { SnowflakeIDGenerator } from '../../src/powermem/utils/snowflake.js';
 
 describe('SnowflakeIDGenerator', () => {
   it('generates unique IDs', () => {

@@ -2,7 +2,7 @@
  * VectorStoreFactory tests — port of Python storage factory tests.
  */
 import { describe, it, expect } from 'vitest';
-import { VectorStoreFactory } from '../../../src/storage/factory.js';
+import { VectorStoreFactory } from '../../../src/powermem/storage/factory.js';
 
 describe('VectorStoreFactory', () => {
   it('lists built-in providers', () => {

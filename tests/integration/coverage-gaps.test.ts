@@ -2,23 +2,25 @@
  * Tests targeting specific uncovered lines/branches to close coverage gaps.
  */
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
-import { NativeProvider } from '../../src/core/native-provider.js';
-import { SQLiteStore } from '../../src/storage/sqlite/sqlite.js';
-import { PowerMemError } from '../../src/errors/index.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { SQLiteStore } from '../../src/powermem/storage/sqlite/sqlite.js';
+import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
-// ── memory.ts:41-42 — HttpProvider (serverUrl) path ──────────────────────
+// ── memory.ts — explicit store injection path ────────────────────────────
 
-describe('Memory.create with serverUrl', () => {
-  it('creates HttpProvider when serverUrl is provided', async () => {
-    // We can't actually connect, but we can verify it creates without throwing
-    // during construction (HttpProvider is lazy — no connection until first call)
+describe('Memory.create with explicit store', () => {
+  it('uses the injected store instance directly', async () => {
+    const store = new SQLiteStore(':memory:');
     const memory = await Memory.create({
-      serverUrl: 'http://127.0.0.1:19999',
+      store,
+      embeddings: new MockEmbeddings(),
     });
-    expect(memory).toBeDefined();
-    await memory.close(); // no-op for HttpProvider
+    const result = await memory.add('injected store', { infer: false });
+    expect(result.memories).toHaveLength(1);
+    expect(await memory.get(result.memories[0].id)).not.toBeNull();
+    await memory.close();
   });
 });
 
@@ -240,7 +242,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.LLM_API_KEY = 'test-key';
 
     const { createLLMFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     // @langchain/anthropic is not installed in dev
     await expect(createLLMFromEnv()).rejects.toThrow('@langchain/anthropic');
@@ -251,7 +253,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.LLM_API_KEY = 'test-key';
 
     const { createLLMFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     const llm = await createLLMFromEnv();
     expect(llm).toBeDefined();
@@ -262,7 +264,7 @@ describe('provider-factory missing peer deps', () => {
     process.env.EMBEDDING_API_KEY = 'test-key';
 
     const { createEmbeddingsFromEnv } = await import(
-      '../../src/integrations/factory.js'
+      '../../src/powermem/integrations/factory.js'
     );
     const embeddings = await createEmbeddingsFromEnv();
     expect(embeddings).toBeDefined();

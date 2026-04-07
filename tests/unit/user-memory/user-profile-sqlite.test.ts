@@ -2,7 +2,7 @@
  * SQLiteUserProfileStore tests — port of Python regression/test_user_profile.py.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SQLiteUserProfileStore } from '../../../src/user-memory/storage/user-profile-sqlite.js';
+import { SQLiteUserProfileStore } from '../../../src/powermem/user_memory/storage/user-profile-sqlite.js';
 
 describe('SQLiteUserProfileStore', () => {
   let store: SQLiteUserProfileStore;

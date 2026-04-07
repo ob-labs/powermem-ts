@@ -2,7 +2,7 @@
  * Importance evaluator tests — port of Python importance evaluation.
  */
 import { describe, it, expect } from 'vitest';
-import { ImportanceEvaluator } from '../../../src/intelligence/importance-evaluator.js';
+import { ImportanceEvaluator } from '../../../src/powermem/intelligence/importance-evaluator.js';
 
 describe('ImportanceEvaluator', () => {
   const evaluator = new ImportanceEvaluator();

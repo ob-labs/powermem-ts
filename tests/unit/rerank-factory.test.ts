@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createReranker, createRerankerFnFromConfig } from '../../src/integrations/rerank/factory.js';
-import { OpenAICompatReranker } from '../../src/integrations/rerank/openai-compat.js';
+import { createReranker, createRerankerFnFromConfig } from '../../src/powermem/integrations/rerank/factory.js';
+import { OpenAICompatReranker } from '../../src/powermem/integrations/rerank/openai-compat.js';
 
 describe('createReranker', () => {
   it('creates Jina reranker instance', async () => {

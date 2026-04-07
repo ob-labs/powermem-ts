@@ -2,8 +2,8 @@
  * StorageAdapter tests — verifies the adapter layer over VectorStore.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { StorageAdapter } from '../../../src/storage/adapter.js';
-import { SQLiteStore } from '../../../src/storage/sqlite/sqlite.js';
+import { StorageAdapter } from '../../../src/powermem/storage/adapter.js';
+import { SQLiteStore } from '../../../src/powermem/storage/sqlite/sqlite.js';
 
 describe('StorageAdapter', () => {
   let adapter: StorageAdapter;

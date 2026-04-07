@@ -6,7 +6,7 @@
  * to ensure SQLite ORDER BY json_extract works correctly across all axes.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('getAll sorting — combinatorial', () => {

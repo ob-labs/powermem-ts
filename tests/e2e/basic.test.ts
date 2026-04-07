@@ -13,8 +13,8 @@
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { OllamaEmbeddings } from '@langchain/ollama';
 import { ChatOllama } from '@langchain/ollama';
-import { Memory } from '../../src/core/memory.js';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
 
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const EMBED_MODEL = 'nomic-embed-text';

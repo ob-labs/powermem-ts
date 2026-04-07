@@ -6,8 +6,8 @@
  * empty content, idempotent deletes, empty queries, null/edge values.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
-import { PowerMemError } from '../../src/errors/index.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('edge cases and boundary conditions', () => {

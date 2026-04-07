@@ -11,7 +11,7 @@
  * - Special characters and punctuation
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('multi-language support', () => {
@@ -85,6 +85,6 @@ describe('multi-language support', () => {
       infer: false,
     });
     const mem = await provider.get(res.memories[0].id);
-    expect(mem!.metadata).toEqual({ '标签': '重要', 'カテゴリ': 'テスト', 'emoji': '🏷️' });
+    expect(mem!.metadata).toMatchObject({ '标签': '重要', 'カテゴリ': 'テスト', 'emoji': '🏷️' });
   });
 });

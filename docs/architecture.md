@@ -84,7 +84,7 @@ src/
 │       └── users.ts       User profiles + user-scoped memories
 │
 ├── agent/                 AgentMemory — multi-agent scope/permission/collaboration
-├── user-memory/           UserMemory — profile extraction, query rewriting
+├── user_memory/           UserMemory — profile extraction, query rewriting
 ├── configs.ts             Zod schemas for MemoryConfig
 ├── config-loader.ts       autoConfig(), loadConfigFromEnv(), createConfig()
 └── index.ts               Public exports (90+ symbols)
@@ -262,7 +262,7 @@ pmem shell
 
 | Issue #7 Section | Status | Details |
 |---|---|---|
-| 1. Entry API & Config | Done | Config-driven Memory.create(), AsyncMemory alias |
+| 1. Entry API & Config | Done | Config-driven Memory.create(), sync-only Memory API |
 | 2. Storage backends | Done | SQLite + SeekDB + PgVector |
 | 3. Graph + Hybrid search | Done (scaffold) | Graph wiring + FTS5 hybrid search + BM25 sparse |
 | 4. Embeddings & Multimodal | Done | 20+ providers, multimodal add(), vision/audio parsing |

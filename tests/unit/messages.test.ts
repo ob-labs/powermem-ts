@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { extractTextFromContent, hasVisionContent, hasAudioContent, extractImageUrls, toLangChainMessages, parseVisionMessages, parseAudioMessages } from '../../src/utils/messages.js';
-import type { MessageInput } from '../../src/types/memory.js';
+import { extractTextFromContent, hasVisionContent, hasAudioContent, extractImageUrls, toLangChainMessages, parseVisionMessages, parseAudioMessages } from '../../src/powermem/utils/messages.js';
+import type { MessageInput } from '../../src/powermem/types/memory.js';
 
 describe('extractTextFromContent', () => {
   it('returns string as-is', () => {

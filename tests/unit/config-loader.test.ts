@@ -2,9 +2,9 @@
  * Config loader tests — port of Python unit/test_config_loader.py
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { parseMemoryConfig, validateConfig, MemoryConfigSchema } from '../../src/configs.js';
-import { loadConfigFromEnv, autoConfig, createConfig } from '../../src/config-loader.js';
-import { getVersion } from '../../src/version.js';
+import { parseMemoryConfig, validateConfig, MemoryConfigSchema } from '../../src/powermem/configs.js';
+import { loadConfigFromEnv, autoConfig, createConfig } from '../../src/powermem/config_loader.js';
+import { getVersion } from '../../src/powermem/version.js';
 
 describe('version', () => {
   it('returns a semver string', () => {

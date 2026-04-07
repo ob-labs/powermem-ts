@@ -204,7 +204,7 @@ npx pmem shell  # Interactive REPL
 ## API Server
 
 ```bash
-npx tsx src/dashboard/server.ts
+npx tsx src/server/main.ts
 # → http://localhost:8000/
 # → http://localhost:8000/docs (Swagger UI)
 # → http://localhost:8000/openapi.json
@@ -241,7 +241,7 @@ src/
 ├── cli/            Commander.js CLI (config, memory, stats, manage, shell)
 ├── dashboard/      Express server + middleware (auth, rate-limit, metrics, logging) + routers
 ├── agent/          AgentMemory, scope/permission/collaboration management
-└── user-memory/    UserMemory, query rewrite, SQLite profile storage
+└── user_memory/    UserMemory, query rewrite, SQLite profile storage
 ```
 
 ## Testing

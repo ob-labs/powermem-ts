@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDecayFactor, applyDecay } from '../../src/intelligence/ebbinghaus.js';
+import { computeDecayFactor, applyDecay } from '../../src/powermem/intelligence/ebbinghaus-algorithm.js';
 
 describe('computeDecayFactor', () => {
   const now = new Date('2026-04-01T12:00:00Z');

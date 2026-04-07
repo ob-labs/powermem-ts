@@ -8,7 +8,7 @@
  * - Concurrent adds don't lose data or corrupt state
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { MockEmbeddings } from '../mocks.js';
 
 describe('multi-agent isolation', () => {

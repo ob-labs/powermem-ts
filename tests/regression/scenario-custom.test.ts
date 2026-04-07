@@ -7,8 +7,8 @@
  * fallback behavior, reranker, and category-based topic filtering.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { Memory } from '../../src/core/memory.js';
-import { NativeProvider } from '../../src/core/native-provider.js';
+import { Memory } from '../../src/powermem/core/memory.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
 describe('custom integration — scenario 5', () => {

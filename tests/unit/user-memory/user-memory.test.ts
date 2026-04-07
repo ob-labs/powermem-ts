@@ -2,9 +2,9 @@
  * UserMemory tests — port of Python regression/test_user_profile.py.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { Memory } from '../../../src/core/memory.js';
-import { UserMemory } from '../../../src/user-memory/user-memory.js';
-import { SQLiteUserProfileStore } from '../../../src/user-memory/storage/user-profile-sqlite.js';
+import { Memory } from '../../../src/powermem/core/memory.js';
+import { UserMemory } from '../../../src/powermem/user_memory/user_memory.js';
+import { SQLiteUserProfileStore } from '../../../src/powermem/user_memory/storage/user-profile-sqlite.js';
 import { MockEmbeddings } from '../../mocks.js';
 
 describe('UserMemory', () => {

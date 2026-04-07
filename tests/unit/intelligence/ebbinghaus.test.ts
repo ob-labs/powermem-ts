@@ -9,8 +9,8 @@
  * - Decay affects search result ordering
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { computeDecayFactor, applyDecay } from '../../../src/intelligence/ebbinghaus.js';
-import { NativeProvider } from '../../../src/core/native-provider.js';
+import { computeDecayFactor, applyDecay } from '../../../src/powermem/intelligence/ebbinghaus-algorithm.js';
+import { NativeProvider } from '../../helpers/native-provider-compat.js';
 import { MockEmbeddings } from '../../mocks.js';
 
 describe('Ebbinghaus forgetting curve — detailed', () => {

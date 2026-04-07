@@ -7,8 +7,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { NativeProvider } from '../../src/core/native-provider.js';
-import { SeekDBStore } from '../../src/storage/seekdb/seekdb.js';
+import { NativeProvider } from '../helpers/native-provider-compat.js';
+import { SeekDBStore } from '../../src/powermem/storage/seekdb/seekdb.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
 
 async function tryCreateStore(tmpDir: string, name: string, dim = 8) {
