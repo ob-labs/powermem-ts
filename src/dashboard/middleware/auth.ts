@@ -16,7 +16,7 @@ export function createAuthMiddleware(config: ServerConfig) {
     }
 
     // Public routes — no auth required
-    if (req.path === '/api/v1/system/health' || req.path === '/' || req.path.startsWith('/dashboard')) {
+    if (req.path === '/api/v1/system/health' || req.path === '/') {
       next();
       return;
     }

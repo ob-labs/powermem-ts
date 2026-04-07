@@ -2,10 +2,9 @@
  * Data correctness tests — prove that data written via CLI or API
  * is stored accurately and returned correctly through all output paths.
  *
- * Requires dashboard server running on port 8000.
+ * Requires server running on port 8000.
  */
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'node:child_process';
 
 const API = 'http://localhost:8000/api/v1';
 
@@ -142,64 +141,10 @@ describe('Data Correctness: Input → Storage → Output', async () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // Feature: API write → Dashboard read (cross-channel)
-  // ═══════════════════════════════════════════════════════════════
-
-  describe('API write → Dashboard displays correctly', () => {
-    it('memory added via API appears in dashboard memories page', () => {
-      const output = execSync(`dev-browser --headless --timeout 20 <<'SCRIPT'
-const page = await browser.getPage("data-verify-mem");
-await page.goto("http://localhost:8000/dashboard");
-await page.waitForTimeout(2000);
-await page.click('a[data-page="memories"]');
-await page.waitForTimeout(2000);
-const tableText = await page.evaluate(() => document.getElementById('memTable')?.innerText ?? '');
-// Check that at least one of our test memories appears
-console.log(tableText.includes("dark roast coffee") ? "PASS:content_visible" : "FAIL:content_visible");
-console.log(tableText.includes("verify-user-1") ? "PASS:user_visible" : "FAIL:user_visible");
-SCRIPT`, { encoding: 'utf-8', timeout: 30000 }).trim();
-
-      expect(output).toContain('PASS:content_visible');
-      expect(output).toContain('PASS:user_visible');
-    });
-
-    it('stats cards show non-zero total after API writes', () => {
-      const output = execSync(`dev-browser --headless --timeout 15 <<'SCRIPT'
-const page = await browser.getPage("data-verify-stats");
-await page.goto("http://localhost:8000/dashboard");
-await page.waitForTimeout(3000);
-const totalText = await page.evaluate(() => {
-  const cards = document.querySelectorAll('.card-value');
-  return cards[0]?.textContent ?? '0';
-});
-const total = parseInt(totalText);
-console.log("total:" + total);
-console.log(total > 0 ? "PASS:nonzero_total" : "FAIL:zero_total");
-SCRIPT`, { encoding: 'utf-8', timeout: 25000 }).trim();
-
-      expect(output).toContain('PASS:nonzero_total');
-    });
-
-    it('growth trend shows today in chart data', () => {
-      const output = execSync(`dev-browser --headless --timeout 15 <<'SCRIPT'
-const page = await browser.getPage("data-verify-growth");
-await page.goto("http://localhost:8000/dashboard");
-await page.waitForTimeout(3000);
-const chartText = await page.evaluate(() => document.getElementById('growthChart')?.innerText ?? '');
-const today = new Date().toISOString().slice(5, 10);
-console.log("chart:" + chartText.substring(0, 100));
-console.log(chartText.includes(today) ? "PASS:today_in_chart" : "FAIL:today_not_in_chart");
-SCRIPT`, { encoding: 'utf-8', timeout: 25000 }).trim();
-
-      expect(output).toContain('PASS:today_in_chart');
-    });
-  });
-
-  // ═══════════════════════════════════════════════════════════════
   // Feature: User isolation — data written for user A not visible to user B
   // ═══════════════════════════════════════════════════════════════
 
-  describe('User isolation across API and dashboard', () => {
+  describe('User isolation across API responses', () => {
     it('user A memories not visible in user B list', async () => {
       const tsA = Date.now();
       const userA = `isolated-A-${tsA}`;
