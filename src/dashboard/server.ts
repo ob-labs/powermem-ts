@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
- * PowerMem Dashboard — Express server with full REST API.
+ * PowerMem API server — Express server with full REST API.
  * Modular architecture matching Python FastAPI edition.
  */
 import express from 'express';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Memory } from '../core/memory.js';
 import type { Embeddings } from '@langchain/core/embeddings';
 import { VERSION } from '../version.js';
@@ -19,8 +17,6 @@ import { createMemoriesRouter } from './routers/memories.js';
 import { createAgentsRouter } from './routers/agents.js';
 import { createUsersRouter } from './routers/users.js';
 import { buildOpenAPISpec } from './openapi.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface DashboardServerOptions {
   port?: number;
@@ -80,19 +76,11 @@ export async function createDashboardServer(options: DashboardServerOptions = {}
 </body></html>`);
   });
 
-  // ─── Dashboard HTML ────────────────────────────────────────────────
-  const publicDir = path.join(__dirname, 'public');
-  app.get('/dashboard', (_req, res) => {
-    res.sendFile(path.join(publicDir, 'index.html'));
-  });
-  app.use('/dashboard', express.static(publicDir));
-
   // ─── Root ──────────────────────────────────────────────────────────
   app.get('/', (_req, res) => {
     res.json({
       name: 'PowerMem TS',
       version: VERSION,
-      dashboard: '/dashboard/',
       api: '/api/v1/',
       docs: '/docs',
       openapi: '/openapi.json',
@@ -125,7 +113,7 @@ if (process.argv[1]?.endsWith('server.ts') || process.argv[1]?.endsWith('server.
 
   createDashboardServer({ dbPath: process.env.DB_PATH, embeddings }).then(({ app }) => {
     app.listen(config.port, config.host, () => {
-      console.log(`PowerMem Dashboard running at http://${config.host}:${config.port}/dashboard/`);
+      console.log(`PowerMem API server running at http://${config.host}:${config.port}/`);
       console.log(`API at http://${config.host}:${config.port}/api/v1/`);
       console.log(`Docs at http://${config.host}:${config.port}/docs`);
     });

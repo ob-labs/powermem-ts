@@ -1,4 +1,4 @@
-# BDD Test Cases — PowerMem CLI & Dashboard
+# BDD Test Cases — PowerMem CLI & API
 
 ## CLI Test Scenarios
 
@@ -223,139 +223,6 @@ Scenario: Shell exit command
 
 ---
 
-## Dashboard UI Test Scenarios
-
-### Feature: Dashboard Overview Page
-```gherkin
-Scenario: Dashboard loads and shows stats cards
-  Given the server is running with memories in the database
-  When I navigate to "/dashboard/"
-  Then I see 4 stat cards: Total Memories, Avg Importance, Access Density, Unique Dates
-  And each card shows a numeric value
-
-Scenario: Dashboard shows growth trend chart
-  Given the server is running with memories over multiple days
-  When I navigate to "/dashboard/"
-  Then I see a line chart labeled "Growth Trend"
-  And the chart has date labels on X axis
-
-Scenario: Dashboard shows category distribution
-  Given memories exist with different categories
-  When I navigate to "/dashboard/"
-  Then I see a pie chart labeled "Memory Categories"
-  And the chart shows category segments
-
-Scenario: Dashboard shows age distribution
-  Given memories exist with different ages
-  When I navigate to "/dashboard/"
-  Then I see a bar chart labeled "Retention Age"
-  And bars show "< 1 day", "1-7 days", "7-30 days", "> 30 days"
-
-Scenario: Dashboard shows top accessed memories
-  Given memories with varying access counts exist
-  When I navigate to "/dashboard/"
-  Then I see a table of "Hot Memories"
-  And memories are sorted by access count descending
-
-Scenario: Dashboard shows system health panel
-  When I navigate to "/dashboard/"
-  Then I see a system health card
-  And it shows storage type, LLM provider, and uptime
-
-Scenario: Time range filter works
-  Given the dashboard is loaded
-  When I select "Last 7 days" from the time range dropdown
-  Then the stats and charts update to reflect 7-day data
-
-Scenario: Refresh button reloads data
-  Given the dashboard is loaded
-  When I click the Refresh button
-  Then the data refreshes
-  And a success toast notification appears
-
-Scenario: Dashboard shows loading skeletons
-  When I navigate to "/dashboard/" with slow network
-  Then I see skeleton loading placeholders
-  And they replace with actual content when data loads
-```
-
-### Feature: Dashboard Error Handling
-```gherkin
-Scenario: API key error shows input
-  Given the server requires an API key
-  And no API key is configured
-  When I navigate to "/dashboard/"
-  Then I see an error card with "API key" message
-  And I see an input field to enter the API key
-  And I see an "Update Key" button
-
-Scenario: Saving API key retries the request
-  Given the API key error is displayed
-  When I enter a valid API key and click "Update Key"
-  Then the dashboard loads successfully
-```
-
-### Feature: Memories Page
-```gherkin
-Scenario: Memories page lists memories
-  Given memories exist in the database
-  When I navigate to "/dashboard/#/memories"
-  Then I see a table of memories
-  And each row shows ID, content, user, dates
-
-Scenario: Delete memory from list
-  Given the memories page is loaded with memories
-  When I click the delete button on a memory row
-  Then a confirmation dialog appears
-  When I confirm the deletion
-  Then the memory is removed from the list
-
-Scenario: Bulk delete memories
-  Given the memories page is loaded
-  When I select multiple memories via checkboxes
-  And I click "Delete Selected"
-  Then selected memories are removed
-```
-
-### Feature: User Profile Page
-```gherkin
-Scenario: User profile page loads
-  When I navigate to "/dashboard/#/user-profile"
-  Then I see a user profile management interface
-
-Scenario: Search user profiles
-  Given user profiles exist
-  When I enter a user ID in the search field
-  Then matching profiles are displayed
-```
-
-### Feature: Settings Page
-```gherkin
-Scenario: Settings page shows configuration
-  When I navigate to "/dashboard/#/settings"
-  Then I see the current configuration settings
-```
-
-### Feature: Navigation and Theme
-```gherkin
-Scenario: Sidebar navigation works
-  Given the dashboard is loaded
-  When I click "Memories" in the sidebar
-  Then I navigate to the memories page
-
-Scenario: Theme toggle switches between light and dark
-  Given the dashboard is loaded
-  When I click the theme toggle
-  Then the theme switches between light and dark mode
-
-Scenario: Language switcher changes language
-  Given the dashboard is loaded
-  When I switch language to "中文"
-  Then all UI labels change to Chinese
-```
-
----
-
 ## Data Correctness Scenarios
 
 ### Feature: API Write → API Read Round-Trip
@@ -380,24 +247,6 @@ Scenario: Stats reflect accurate counts
   Given 3 memories exist for a user
   When I GET stats for that user
   Then totalMemories equals 3
-```
-
-### Feature: API Write → Dashboard Displays Correctly
-```gherkin
-Scenario: Memory added via API appears in dashboard
-  Given I POST a memory via the REST API
-  When I navigate to the dashboard memories page
-  Then the memory content and userId are visible in the table
-
-Scenario: Stats cards show non-zero total
-  Given memories exist in the database
-  When I view the dashboard overview
-  Then the "Total Memories" card shows a number > 0
-
-Scenario: Growth trend shows today
-  Given memories were added today
-  When I view the dashboard overview
-  Then the growth trend chart includes today's date
 ```
 
 ### Feature: User Isolation

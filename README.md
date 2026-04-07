@@ -19,7 +19,7 @@ PowerMem combines vector-based semantic search with LLM-driven intelligent memor
 - **Multi-tenant** — userId/agentId/runId isolation on all operations
 - **Sub-storage routing** — route memories to different stores by filter, with data migration
 - **CLI** — `pmem` command with `--run-id`, `--metadata`, `--memory-type` options
-- **Dashboard server** — Express REST API with auth, rate-limiting, Prometheus metrics, OpenAPI/Swagger, agent/user routes
+- **API server** — Express REST API with auth, rate-limiting, Prometheus metrics, OpenAPI/Swagger, agent/user routes
 - **Agent memory** — scope/permission/collaboration management for multi-agent systems
 - **User profiles** — profile extraction, profile-aware search, query rewriting
 - **Observability** — TelemetryCollector + AuditLogger + IntelligenceManager (importance scoring + Ebbinghaus decay)
@@ -201,11 +201,11 @@ npx pmem shell  # Interactive REPL
 | `graphStore` | Optional GraphStoreBase for graph-based relations |
 | `subStorageRouter` | SubStorageRouter for multi-store routing |
 
-## Dashboard Server
+## API Server
 
 ```bash
 npx tsx src/dashboard/server.ts
-# → http://localhost:8000/dashboard/
+# → http://localhost:8000/
 # → http://localhost:8000/docs (Swagger UI)
 # → http://localhost:8000/openapi.json
 ```
