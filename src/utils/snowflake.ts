@@ -7,7 +7,7 @@
  * IDs are always returned as strings to prevent JS precision loss.
  */
 
-import { PowerMemError } from '../errors/index.js';
+import { PowerMemError, PowerMemInitError } from '../errors/index.js';
 
 const EPOCH = 1609459200000n; // 2021-01-01 00:00:00 UTC
 const DATACENTER_BITS = 5n;
@@ -30,15 +30,13 @@ export class SnowflakeIDGenerator {
 
   constructor(datacenterId = 0, workerId = 0) {
     if (datacenterId < 0 || BigInt(datacenterId) > MAX_DATACENTER_ID) {
-      throw new PowerMemError(
-        `Datacenter ID must be between 0 and ${MAX_DATACENTER_ID}`,
-        'INIT_ERROR'
+      throw new PowerMemInitError(
+        `Datacenter ID must be between 0 and ${MAX_DATACENTER_ID}`
       );
     }
     if (workerId < 0 || BigInt(workerId) > MAX_WORKER_ID) {
-      throw new PowerMemError(
-        `Worker ID must be between 0 and ${MAX_WORKER_ID}`,
-        'INIT_ERROR'
+      throw new PowerMemInitError(
+        `Worker ID must be between 0 and ${MAX_WORKER_ID}`
       );
     }
     this.datacenterId = BigInt(datacenterId);

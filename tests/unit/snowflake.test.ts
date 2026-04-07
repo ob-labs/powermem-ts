@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { SnowflakeIDGenerator } from '../../src/utils/snowflake.js';
-import { PowerMemError } from '../../src/errors/index.js';
+import { PowerMemInitError } from '../../src/errors/index.js';
 
 describe('SnowflakeIDGenerator', () => {
   describe('constructor validation', () => {
     it('rejects negative datacenterId', () => {
-      expect(() => new SnowflakeIDGenerator(-1, 0)).toThrow(PowerMemError);
+      expect(() => new SnowflakeIDGenerator(-1, 0)).toThrow(PowerMemInitError);
     });
 
     it('rejects datacenterId exceeding 31', () => {
-      expect(() => new SnowflakeIDGenerator(32, 0)).toThrow(PowerMemError);
+      expect(() => new SnowflakeIDGenerator(32, 0)).toThrow(PowerMemInitError);
     });
 
     it('rejects negative workerId', () => {
-      expect(() => new SnowflakeIDGenerator(0, -1)).toThrow(PowerMemError);
+      expect(() => new SnowflakeIDGenerator(0, -1)).toThrow(PowerMemInitError);
     });
 
     it('rejects workerId exceeding 31', () => {
-      expect(() => new SnowflakeIDGenerator(0, 32)).toThrow(PowerMemError);
+      expect(() => new SnowflakeIDGenerator(0, 32)).toThrow(PowerMemInitError);
     });
 
     it('accepts valid datacenterId and workerId at boundary', () => {
