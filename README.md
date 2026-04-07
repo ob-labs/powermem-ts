@@ -204,7 +204,7 @@ npx pmem shell  # Interactive REPL
 ## API Server
 
 ```bash
-npx tsx src/server/main.ts
+npx tsx src/server/cli/server.ts
 # → http://localhost:8000/
 # → http://localhost:8000/docs (Swagger UI)
 # → http://localhost:8000/openapi.json

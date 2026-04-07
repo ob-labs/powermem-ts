@@ -1,7 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { SnowflakeIDGenerator } from '../../src/powermem/utils/snowflake.js';
+import { PowerMemInitError } from '../../src/powermem/errors/index.js';
 
 describe('SnowflakeIDGenerator', () => {
+  describe('constructor validation', () => {
+    it('rejects negative datacenterId', () => {
+      expect(() => new SnowflakeIDGenerator(-1, 0)).toThrow(PowerMemInitError);
+    });
+
+    it('rejects datacenterId exceeding 31', () => {
+      expect(() => new SnowflakeIDGenerator(32, 0)).toThrow(PowerMemInitError);
+    });
+
+    it('rejects negative workerId', () => {
+      expect(() => new SnowflakeIDGenerator(0, -1)).toThrow(PowerMemInitError);
+    });
+
+    it('rejects workerId exceeding 31', () => {
+      expect(() => new SnowflakeIDGenerator(0, 32)).toThrow(PowerMemInitError);
+    });
+
+    it('accepts valid datacenterId and workerId at boundary', () => {
+      expect(() => new SnowflakeIDGenerator(31, 31)).not.toThrow();
+    });
+  });
+
   it('generates unique IDs', () => {
     const gen = new SnowflakeIDGenerator();
     const ids = new Set<string>();
