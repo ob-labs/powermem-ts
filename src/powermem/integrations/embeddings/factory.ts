@@ -266,11 +266,6 @@ export async function createEmbeddings(config: EmbeddingConfig): Promise<Embeddi
 export async function createEmbeddingsFromEnv(): Promise<Embeddings> {
   const config = loadConfigFromEnv().embedder ?? { provider: 'qwen', config: {} };
   const configValues = (config.config ?? {}) as Record<string, unknown>;
-  if (!('apiKey' in configValues) || !configValues.apiKey) {
-    throw new PowerMemInitError(
-      'EMBEDDING_API_KEY is required. Set it in your .env file or environment.'
-    );
-  }
   return createEmbeddings({
     provider: config.provider,
     ...configValues,
