@@ -534,7 +534,22 @@ function buildDefaultDatabaseConfig(provider: string, databaseConfig?: Record<st
       enableWal: true,
       timeout: 30,
     };
-  };
+  }
+  if (provider === 'oceanbase') {
+    return {
+      host: '',
+      obPath: './seekdb_data',
+      port: '2881',
+      user: 'root@test',
+      password: '',
+      dbName: 'test',
+      collectionName: 'power_mem',
+      indexType: 'HNSW',
+      vidxMetricType: 'l2',
+      includeSparse: false,
+      enableNativeHybrid: false,
+    };
+  }
   return {};
 }
 

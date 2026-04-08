@@ -344,6 +344,14 @@ export class SQLiteStore implements VectorStore {
       conditions.push("json_extract(payload, '$.run_id') = ?");
       params.push(filters.runId);
     }
+    if (filters.scope) {
+      conditions.push("json_extract(payload, '$.scope') = ?");
+      params.push(filters.scope);
+    }
+    if (filters.category) {
+      conditions.push("json_extract(payload, '$.category') = ?");
+      params.push(filters.category);
+    }
 
     const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
     return { where, params };

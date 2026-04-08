@@ -1,4 +1,4 @@
-export { Embedder, createEmbeddings, createEmbeddingsFromEnv } from './embeddings/index.js';
+export { Embedder, createEmbeddings, createEmbeddingsFromEnv, createSparseEmbedder } from './embeddings/index.js';
 export type { EmbeddingProvider, BaseEmbedderConfig } from './embeddings/index.js';
 export { createLLM, createLLMFromEnv } from './llm/index.js';
 export type { LLMProvider, BaseLLMConfig } from './llm/index.js';

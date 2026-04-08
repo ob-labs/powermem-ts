@@ -40,11 +40,26 @@ describeIf('SeekDB E2E — full stack (shared instance)', () => {
   let memory: Memory;
   let tmpDir: string;
 
+  function makeSeekdbConfig(collectionName: string) {
+    return {
+      vectorStore: {
+        provider: 'oceanbase',
+        config: {
+          host: '',
+          obPath: tmpDir,
+          dbName: 'test',
+          collectionName,
+          embeddingModelDims: 8,
+        },
+      },
+    } as const;
+  }
+
   beforeAll(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'seekdb-e2e-'));
     memory = await Memory.create({
       embeddings: new MockEmbeddings(),
-      seekdb: { path: tmpDir, database: 'test', collectionName: 'memories', dimension: 8 },
+      config: makeSeekdbConfig('memories'),
     });
   });
 
@@ -195,7 +210,7 @@ describeIf('SeekDB E2E — full stack (shared instance)', () => {
     const mem2 = await Memory.create({
       embeddings: new MockEmbeddings(),
       llm: new MockLLM([JSON.stringify({ facts: ['Likes tea', 'Lives in Tokyo'] })]),
-      seekdb: { path: tmpDir, database: 'test', collectionName: `infer_${Date.now()}`, dimension: 8 },
+      config: makeSeekdbConfig(`infer_${Date.now()}`),
     });
     const result = await mem2.add('I like tea and live in Tokyo', { userId: 'infer-u' });
     expect(result.memories.length).toBeGreaterThanOrEqual(1);

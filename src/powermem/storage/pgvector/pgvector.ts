@@ -115,6 +115,8 @@ export class PgVectorStore implements VectorStore {
     if (filters.userId) { conditions.push(`user_id = $${idx++}`); params.push(filters.userId); }
     if (filters.agentId) { conditions.push(`agent_id = $${idx++}`); params.push(filters.agentId); }
     if (filters.runId) { conditions.push(`run_id = $${idx++}`); params.push(filters.runId); }
+    if (filters.scope) { conditions.push(`scope = $${idx++}`); params.push(filters.scope); }
+    if (filters.category) { conditions.push(`category = $${idx++}`); params.push(filters.category); }
 
     return {
       clause: conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '',

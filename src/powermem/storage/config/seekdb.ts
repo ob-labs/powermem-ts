@@ -5,4 +5,5 @@ export interface SeekDBConfig extends BaseVectorStoreConfig {
   database?: string;
   distance?: 'cosine' | 'l2' | 'inner_product';
   dimension?: number;
+  includeSparse?: boolean;
 }

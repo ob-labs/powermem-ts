@@ -24,15 +24,6 @@ export interface MemoryOptions {
   reranker?: RerankerFn;
   enableDecay?: boolean;
   decayWeight?: number;
-  seekdb?: SeekDBOptions;
   graphStore?: GraphStoreBase;
   subStorageRouter?: SubStorageRouter;
-}
-
-export interface SeekDBOptions {
-  path: string;
-  database?: string;
-  collectionName?: string;
-  distance?: 'cosine' | 'l2' | 'inner_product';
-  dimension?: number;
 }

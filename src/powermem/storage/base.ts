@@ -25,6 +25,9 @@ export interface VectorStoreFilter {
   userId?: string;
   agentId?: string;
   runId?: string;
+  scope?: string;
+  category?: string;
+  [key: string]: unknown;
 }
 
 export interface VectorStoreSearchMatch {

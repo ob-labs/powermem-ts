@@ -9,12 +9,14 @@ describe('VectorStoreFactory', () => {
     const providers = VectorStoreFactory.getSupportedProviders();
     expect(providers).toContain('sqlite');
     expect(providers).toContain('seekdb');
+    expect(providers).toContain('oceanbase');
   });
 
   it('hasProvider returns true for registered providers', () => {
     expect(VectorStoreFactory.hasProvider('sqlite')).toBe(true);
     expect(VectorStoreFactory.hasProvider('SQLite')).toBe(true);
     expect(VectorStoreFactory.hasProvider('seekdb')).toBe(true);
+    expect(VectorStoreFactory.hasProvider('oceanbase')).toBe(true);
   });
 
   it('hasProvider returns false for unknown', () => {

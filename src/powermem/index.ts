@@ -34,7 +34,7 @@ export type {
   MemoryListResult,
 } from './types/responses.js';
 
-export type { MemoryOptions, RerankerFn, SeekDBOptions } from './types/options.js';
+export type { MemoryOptions, RerankerFn } from './types/options.js';
 
 export {
   ErrorCode,

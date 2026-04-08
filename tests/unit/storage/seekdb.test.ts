@@ -150,6 +150,29 @@ describeIf('SeekDBStore', () => {
     expect(results[0].content).toBe('alice data');
   });
 
+  it('hybridSearch promotes keyword matches by query text', async () => {
+    await store.insert('1', [0, 1, 0], makePayload({ data: 'TypeScript hybrid retrieval notes' }));
+    await store.insert('2', [1, 0, 0], makePayload({ data: 'Completely unrelated content' }));
+
+    const results = await store.hybridSearch([1, 0, 0], 'TypeScript hybrid', {}, 10);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].content).toContain('TypeScript');
+    expect(results[0].metadata?._quality_score).toBeDefined();
+  });
+
+  it('search and hybridSearch respect scope/category filters', async () => {
+    await store.insert('1', [1, 0, 0], makePayload({ scope: 'private', category: 'prefs', data: 'coffee preference' }));
+    await store.insert('2', [1, 0, 0], makePayload({ scope: 'shared', category: 'notes', data: 'coffee note' }));
+
+    const scoped = await store.search([1, 0, 0], { scope: 'private', category: 'prefs' }, 10);
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].content).toBe('coffee preference');
+
+    const hybrid = await store.hybridSearch([0, 1, 0], 'coffee', { scope: 'shared', category: 'notes' }, 10);
+    expect(hybrid).toHaveLength(1);
+    expect(hybrid[0].content).toBe('coffee note');
+  });
+
   it('count', async () => {
     await store.insert('1', [1, 0, 0], makePayload({ user_id: 'alice' }));
     await store.insert('2', [0, 1, 0], makePayload({ user_id: 'bob' }));

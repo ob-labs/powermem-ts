@@ -16,4 +16,4 @@ export type {
   MemoryListResult,
 } from './responses.js';
 
-export type { MemoryOptions, SeekDBOptions, RerankerFn } from './options.js';
+export type { MemoryOptions, RerankerFn } from './options.js';

@@ -194,6 +194,17 @@ describe('loadConfigFromEnv', () => {
     expect(config.vectorStore!.config.tableName).toBe('memories');
   });
 
+  it('normalizes seekdb provider to oceanbase embedded defaults', () => {
+    process.env.DATABASE_PROVIDER = 'seekdb';
+
+    const config = loadConfigFromEnv();
+    expect(config.vectorStore!.provider).toBe('oceanbase');
+    expect(config.vectorStore!.config.host).toBe('');
+    expect(config.vectorStore!.config.dbName).toBe('test');
+    expect(config.vectorStore!.config.collectionName).toBe('power_mem');
+    expect(config.vectorStore!.config.vidxMetricType).toBe('l2');
+  });
+
   it('loads intelligent memory settings from env', () => {
     process.env.INTELLIGENT_MEMORY_ENABLED = 'false';
     process.env.INTELLIGENT_MEMORY_FALLBACK_TO_SIMPLE_ADD = 'true';

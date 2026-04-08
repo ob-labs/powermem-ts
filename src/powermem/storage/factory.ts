@@ -3,6 +3,7 @@
  * Port of Python powermem/storage/factory.py.
  */
 import type { GraphStoreBase, VectorStore } from './base.js';
+import type { SparseEmbedder } from '../integrations/embeddings/sparse.js';
 
 type StoreCreator = (config: Record<string, unknown>) => Promise<VectorStore>;
 type GraphStoreCreator = (config: Record<string, unknown>) => Promise<GraphStoreBase>;
@@ -74,10 +75,12 @@ VectorStoreFactory.register('seekdb', async (config) => {
   const { SeekDBStore } = await import('./seekdb/seekdb.js');
   return SeekDBStore.create({
     path: (config.path as string) ?? './seekdb_data',
-    database: config.database as string | undefined,
-    collectionName: config.collectionName as string | undefined,
-    distance: config.distance as 'cosine' | 'l2' | 'inner_product' | undefined,
-    dimension: config.dimension as number | undefined,
+    database: (config.database as string | undefined) ?? 'test',
+    collectionName: (config.collectionName as string | undefined) ?? 'power_mem',
+    distance: (config.distance as 'cosine' | 'l2' | 'inner_product' | undefined) ?? 'l2',
+    dimension: (config.dimension as number | undefined) ?? (config.embeddingModelDims as number | undefined),
+    includeSparse: (config.includeSparse as boolean | undefined) ?? false,
+    sparseEmbedder: config.sparseEmbedder as SparseEmbedder | undefined,
   });
 });
 
@@ -118,6 +121,8 @@ VectorStoreFactory.register('oceanbase', async (config) => {
     collectionName: (config.collectionName as string | undefined) ?? 'power_mem',
     distance: (config.vidxMetricType as 'cosine' | 'l2' | 'inner_product' | undefined) ?? 'l2',
     dimension: (config.embeddingModelDims as number | undefined) ?? (config.dimensions as number | undefined),
+    includeSparse: (config.includeSparse as boolean | undefined) ?? false,
+    sparseEmbedder: config.sparseEmbedder as SparseEmbedder | undefined,
   });
 });
 

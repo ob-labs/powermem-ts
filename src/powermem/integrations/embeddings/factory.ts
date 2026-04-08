@@ -23,6 +23,13 @@
 import type { Embeddings } from '@langchain/core/embeddings';
 import { PowerMemInitError } from '../../errors/index.js';
 import { loadConfigFromEnv } from '../../config_loader.js';
+import {
+  BM25SparseEmbedder,
+  CHINESE_STOPWORDS,
+  ENGLISH_STOPWORDS,
+  tokenizeCJK,
+  type SparseEmbedder,
+} from './sparse.js';
 
 // ─── OpenAI-compatible base URLs ─────────────────────────────────────────────
 
@@ -156,6 +163,14 @@ interface EmbeddingConfig {
   region?: string;
 }
 
+interface SparseEmbeddingConfig {
+  provider: string;
+  vocabSize?: number;
+  k1?: number;
+  b?: number;
+  tokenizer?: 'default' | 'cjk';
+}
+
 export async function createEmbeddings(config: EmbeddingConfig): Promise<Embeddings> {
   const provider = config.provider.toLowerCase();
   const apiKey = config.apiKey;
@@ -260,4 +275,26 @@ export async function createEmbeddingsFromEnv(): Promise<Embeddings> {
     provider: config.provider,
     ...configValues,
   } as EmbeddingConfig);
+}
+
+export async function createSparseEmbedder(config: SparseEmbeddingConfig): Promise<SparseEmbedder> {
+  const provider = config.provider.toLowerCase();
+  if (provider === 'bm25' || provider === 'default') {
+    return new BM25SparseEmbedder({
+      k1: config.k1,
+      b: config.b,
+      vocabSize: config.vocabSize,
+    });
+  }
+  if (provider === 'bm25_cjk' || provider === 'cjk') {
+    const stopwords = new Set([...ENGLISH_STOPWORDS, ...CHINESE_STOPWORDS]);
+    return new BM25SparseEmbedder({
+      k1: config.k1,
+      b: config.b,
+      vocabSize: config.vocabSize,
+      stopwords,
+      tokenizer: (text: string) => tokenizeCJK(text, stopwords),
+    });
+  }
+  throw new PowerMemInitError(`Unsupported sparse embedder provider: "${provider}".`);
 }
