@@ -26,6 +26,7 @@ export const TelemetryConfigSchema = z.object({
   telemetryApiKey: z.string().nullish(),
   batchSize: z.number().int().default(100),
   flushInterval: z.number().int().default(30),
+  retentionDays: z.number().int().default(30),
 });
 export type TelemetryConfig = z.infer<typeof TelemetryConfigSchema>;
 
@@ -34,6 +35,8 @@ export const AuditConfigSchema = z.object({
   logFile: z.string().default('./logs/audit.log'),
   logLevel: z.string().default('INFO'),
   retentionDays: z.number().int().default(90),
+  compressLogs: z.boolean().default(true),
+  logRotationSize: z.string().nullish(),
 });
 export type AuditConfig = z.infer<typeof AuditConfigSchema>;
 
@@ -41,16 +44,22 @@ export const LoggingConfigSchema = z.object({
   level: z.string().default('DEBUG'),
   format: z.string().default('%(asctime)s - %(name)s - %(levelname)s - %(message)s'),
   file: z.string().default('./logs/powermem.log'),
+  maxSize: z.string().default('100MB'),
+  backupCount: z.number().int().default(5),
+  compressBackups: z.boolean().default(true),
+  consoleEnabled: z.boolean().default(true),
+  consoleLevel: z.string().default('INFO'),
+  consoleFormat: z.string().default('%(levelname)s - %(message)s'),
 });
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 
 export const AgentMemoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  mode: z.enum(['multi_agent', 'multi_user', 'hybrid', 'auto']).default('multi_agent'),
-  defaultScope: z.string().default('private'),
-  defaultPrivacyLevel: z.string().default('standard'),
-  defaultCollaborationLevel: z.string().default('isolated'),
-  defaultAccessPermission: z.string().default('read'),
+  mode: z.enum(['multi_agent', 'multi_user', 'hybrid', 'auto']).default('auto'),
+  defaultScope: z.string().default('agent_group'),
+  defaultPrivacyLevel: z.string().default('private'),
+  defaultCollaborationLevel: z.string().default('read_only'),
+  defaultAccessPermission: z.string().default('owner_only'),
   enableCollaboration: z.boolean().default(true),
 });
 export type AgentMemoryConfig = z.infer<typeof AgentMemoryConfigSchema>;
@@ -61,6 +70,42 @@ export const QueryRewriteConfigSchema = z.object({
   modelOverride: z.string().nullish(),
 });
 export type QueryRewriteConfig = z.infer<typeof QueryRewriteConfigSchema>;
+
+export const PerformanceConfigSchema = z.object({
+  memoryBatchSize: z.number().int().default(100),
+  memoryCacheSize: z.number().int().default(1000),
+  memoryCacheTtl: z.number().int().default(3600),
+  memorySearchLimit: z.number().int().default(10),
+  memorySearchThreshold: z.number().default(0.7),
+  vectorStoreBatchSize: z.number().int().default(50),
+  vectorStoreCacheSize: z.number().int().default(500),
+  vectorStoreIndexRebuildInterval: z.number().int().default(86400),
+});
+export type PerformanceConfig = z.infer<typeof PerformanceConfigSchema>;
+
+export const SecurityConfigSchema = z.object({
+  encryptionEnabled: z.boolean().default(false),
+  encryptionKey: z.string().default(''),
+  encryptionAlgorithm: z.string().default('AES-256-GCM'),
+  accessControlEnabled: z.boolean().default(true),
+  accessControlDefaultPermission: z.string().default('READ_ONLY'),
+  accessControlAdminUsers: z.string().default('admin,root'),
+});
+export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
+
+export const MemoryDecayConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  algorithm: z.string().default('ebbinghaus'),
+  baseRetention: z.number().default(1.0),
+  forgettingRate: z.number().default(0.1),
+  reinforcementFactor: z.number().default(0.3),
+});
+export type MemoryDecayConfig = z.infer<typeof MemoryDecayConfigSchema>;
+
+export const TimezoneConfigSchema = z.object({
+  timezone: z.string().default('UTC'),
+});
+export type TimezoneConfig = z.infer<typeof TimezoneConfigSchema>;
 
 // ─── Provider configs ─────────────────────────────────────────────────────
 
@@ -83,6 +128,7 @@ export const EmbedderProviderConfigSchema = z.object({
 export type EmbedderProviderConfig = z.infer<typeof EmbedderProviderConfigSchema>;
 
 export const RerankProviderConfigSchema = z.object({
+  enabled: z.boolean().default(false),
   provider: z.string().default('qwen'),
   config: z.record(z.string(), z.unknown()).default({}),
 });
@@ -95,8 +141,18 @@ export const GraphStoreProviderConfigSchema = z.object({
     OceanBaseGraphConfigSchema,
     z.record(z.string(), z.unknown()),
   ]).default({}),
+  customPrompt: z.string().nullish(),
+  customExtractRelationsPrompt: z.string().nullish(),
+  customUpdateGraphPrompt: z.string().nullish(),
+  customDeleteRelationsPrompt: z.string().nullish(),
 });
 export type GraphStoreProviderConfig = z.infer<typeof GraphStoreProviderConfigSchema>;
+
+export const SparseEmbedderProviderConfigSchema = z.object({
+  provider: z.string(),
+  config: z.record(z.string(), z.unknown()).default({}),
+});
+export type SparseEmbedderProviderConfig = z.infer<typeof SparseEmbedderProviderConfigSchema>;
 
 // ─── Main config ──────────────────────────────────────────────────────────
 
@@ -106,7 +162,7 @@ export const MemoryConfigSchema = z.object({
   embedder: EmbedderProviderConfigSchema.default(() => ({ provider: 'qwen', config: {} })),
   graphStore: GraphStoreProviderConfigSchema.nullish(),
   reranker: RerankProviderConfigSchema.nullish(),
-  sparseEmbedder: z.record(z.string(), z.unknown()).nullish(),
+  sparseEmbedder: SparseEmbedderProviderConfigSchema.nullish(),
   version: z.string().default('v1.1'),
   customFactExtractionPrompt: z.string().nullish(),
   customUpdateMemoryPrompt: z.string().nullish(),
@@ -117,9 +173,28 @@ export const MemoryConfigSchema = z.object({
   audit: AuditConfigSchema.nullish(),
   logging: LoggingConfigSchema.nullish(),
   queryRewrite: QueryRewriteConfigSchema.nullish(),
+  performance: PerformanceConfigSchema.nullish(),
+  security: SecurityConfigSchema.nullish(),
+  memoryDecay: MemoryDecayConfigSchema.nullish(),
+  timezone: TimezoneConfigSchema.nullish(),
 });
 export type MemoryConfigInput = z.input<typeof MemoryConfigSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+
+function syncEmbeddingDims(config: MemoryConfig): void {
+  const dims = config.embedder.config.embeddingDims;
+  if (typeof dims !== 'number') return;
+
+  if (config.vectorStore.config.embeddingModelDims === undefined) {
+    config.vectorStore.config.embeddingModelDims = dims;
+  }
+  if (config.graphStore && typeof config.graphStore.config === 'object' && config.graphStore.config) {
+    const graphConfig = config.graphStore.config as Record<string, unknown>;
+    if (graphConfig.embeddingModelDims === undefined) {
+      graphConfig.embeddingModelDims = dims;
+    }
+  }
+}
 
 /** Parse and validate a MemoryConfig, applying defaults. */
 export function parseMemoryConfig(input: MemoryConfigInput): MemoryConfig {
@@ -131,6 +206,11 @@ export function parseMemoryConfig(input: MemoryConfigInput): MemoryConfig {
   if (!config.audit) config.audit = AuditConfigSchema.parse({});
   if (!config.logging) config.logging = LoggingConfigSchema.parse({});
   if (!config.queryRewrite) config.queryRewrite = QueryRewriteConfigSchema.parse({});
+  if (!config.performance) config.performance = PerformanceConfigSchema.parse({});
+  if (!config.security) config.security = SecurityConfigSchema.parse({});
+  if (!config.memoryDecay) config.memoryDecay = MemoryDecayConfigSchema.parse({});
+  if (!config.timezone) config.timezone = TimezoneConfigSchema.parse({});
+  syncEmbeddingDims(config);
   return config;
 }
 

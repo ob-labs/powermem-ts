@@ -148,7 +148,9 @@ export class Memory extends MemoryBase {
   static async init(_options: Record<string, unknown> = {}): Promise<void> {}
 
   static async create(options: MemoryOptions = {}): Promise<Memory> {
-    loadEnvFile(options.envFile ?? '.env');
+    if (options.envFile) {
+      loadEnvFile(options.envFile);
+    }
 
     const rawConfig = options.config ?? autoConfig();
     const config = parseMemoryConfig(rawConfig);
@@ -164,14 +166,14 @@ export class Memory extends MemoryBase {
       store = new SQLiteStore(options.dbPath);
     } else if (config.vectorStore.provider === 'sqlite') {
       const configuredPath = config.vectorStore.config.path;
-      const dbPath = typeof configuredPath === 'string' ? configuredPath : path.join(getDefaultHomeDir(), 'memories.db');
+      const dbPath = typeof configuredPath === 'string' ? configuredPath : './data/powermem_dev.db';
       ensureParentDir(dbPath);
       store = new SQLiteStore(dbPath);
     } else {
       try {
         store = await VectorStoreFactory.create(config.vectorStore.provider, config.vectorStore.config);
       } catch {
-        const dbPath = path.join(getDefaultHomeDir(), 'memories.db');
+        const dbPath = './data/powermem_dev.db';
         ensureParentDir(dbPath);
         store = new SQLiteStore(dbPath);
       }
@@ -216,6 +218,7 @@ export class Memory extends MemoryBase {
     if (!reranker && config.reranker) {
       try {
         reranker = await createRerankerFnFromConfig({
+          enabled: config.reranker.enabled,
           provider: config.reranker.provider,
           ...(config.reranker.config as Record<string, unknown>),
         });

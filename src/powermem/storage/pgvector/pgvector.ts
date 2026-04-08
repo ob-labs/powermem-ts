@@ -5,11 +5,7 @@
  * Implements the VectorStore interface using PostgreSQL with the pgvector extension
  * for efficient vector similarity search.
  *
- * Environment variables:
- *   PGVECTOR_CONNECTION_STRING — full connection string (preferred)
- *   PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD — individual params
- *   PGVECTOR_TABLE — table name (default: "memories")
- *   PGVECTOR_DIMS — vector dimensions (default: 1536)
+ * Configuration should be passed via `PgVectorStoreOptions`.
  */
 import type {
   VectorStore,
@@ -23,6 +19,12 @@ export interface PgVectorStoreOptions {
   connectionString?: string;
   tableName?: string;
   dimensions?: number;
+  dbname?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  sslmode?: string;
 }
 
 export class PgVectorStore implements VectorStore {
@@ -32,8 +34,8 @@ export class PgVectorStore implements VectorStore {
   private initialized = false;
 
   constructor(private readonly options: PgVectorStoreOptions = {}) {
-    this.tableName = options.tableName ?? process.env.PGVECTOR_TABLE ?? 'memories';
-    this.dimensions = options.dimensions ?? parseInt(process.env.PGVECTOR_DIMS ?? '1536', 10);
+    this.tableName = options.tableName ?? 'power_mem';
+    this.dimensions = options.dimensions ?? 1536;
   }
 
   static async create(options: PgVectorStoreOptions = {}): Promise<PgVectorStore> {
@@ -55,9 +57,19 @@ export class PgVectorStore implements VectorStore {
     }
 
     const Pool = pg.default?.Pool ?? pg.Pool;
-    const connectionString = this.options.connectionString
-      ?? process.env.PGVECTOR_CONNECTION_STRING
-      ?? `postgresql://${process.env.PGUSER ?? 'postgres'}:${process.env.PGPASSWORD ?? ''}@${process.env.PGHOST ?? 'localhost'}:${process.env.PGPORT ?? '5432'}/${process.env.PGDATABASE ?? 'powermem'}`;
+    let connectionString = this.options.connectionString;
+    if (!connectionString) {
+      const host = this.options.host ?? '127.0.0.1';
+      const port = this.options.port ?? 5432;
+      const dbname = this.options.dbname ?? 'postgres';
+      const user = this.options.user ?? 'postgres';
+      const password = this.options.password ?? '';
+      const auth = password ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}` : encodeURIComponent(user);
+      connectionString = `postgresql://${auth}@${host}:${port}/${dbname}`;
+      if (this.options.sslmode) {
+        connectionString += `?sslmode=${encodeURIComponent(this.options.sslmode)}`;
+      }
+    }
 
     this.pool = new Pool({ connectionString });
 

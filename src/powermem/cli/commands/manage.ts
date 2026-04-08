@@ -121,12 +121,17 @@ export function registerManageCommands(program: Command): void {
       if (parent.envFile) process.env.POWERMEM_ENV_FILE = parent.envFile;
 
       const { Memory } = await import('../../core/memory.js');
+      const { loadConfigFromEnv } = await import('../../config_loader.js');
       const { MemoryOptimizer } = await import('../../intelligence/memory-optimizer.js');
       const { SQLiteStore } = await import('../../storage/sqlite/sqlite.js');
 
       // Create store directly for optimizer
       const mem = await Memory.create();
-      const store = new SQLiteStore(process.env.SQLITE_PATH ?? ':memory:');
+      const config = loadConfigFromEnv();
+      const sqlitePath = typeof config.vectorStore?.config?.path === 'string'
+        ? config.vectorStore.config.path
+        : './data/powermem_dev.db';
+      const store = new SQLiteStore(sqlitePath);
 
       try {
         const optimizer = new MemoryOptimizer(store);

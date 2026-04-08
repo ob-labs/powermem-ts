@@ -1,16 +1,17 @@
 /**
  * PgVectorStore tests — requires running PostgreSQL with pgvector extension.
  *
- * Skip condition: if PGVECTOR_CONNECTION_STRING is not set and local postgres is not reachable.
+ * Skip condition: if VECTOR_STORE_CONNECTION_STRING is not set and local postgres is not reachable.
  *
- * Run: PGDATABASE=powermem_test npx vitest run tests/unit/storage/pgvector.test.ts
+ * Run: POSTGRES_DATABASE=powermem_test npx vitest run tests/unit/storage/pgvector.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PgVectorStore } from '../../../src/powermem/storage/pgvector/pgvector.js';
 
 const TEST_TABLE = `pgvector_test_${Date.now()}`;
 const DIMS = 8; // small for testing
-const CONNECTION = process.env.PGVECTOR_CONNECTION_STRING ?? `postgresql://${process.env.USER ?? 'pz21'}@localhost/powermem_test`;
+const CONNECTION = process.env.VECTOR_STORE_CONNECTION_STRING
+  ?? `postgresql://${process.env.POSTGRES_USER ?? process.env.USER ?? 'postgres'}@${process.env.POSTGRES_HOST ?? 'localhost'}/${process.env.POSTGRES_DATABASE ?? 'powermem_test'}`;
 
 function vec(...vals: number[]): number[] {
   const v = new Array(DIMS).fill(0);

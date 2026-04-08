@@ -22,14 +22,15 @@
  */
 import type { Embeddings } from '@langchain/core/embeddings';
 import { PowerMemInitError } from '../../errors/index.js';
+import { loadConfigFromEnv } from '../../config_loader.js';
 
 // ─── OpenAI-compatible base URLs ─────────────────────────────────────────────
 
 const OPENAI_COMPAT_BASE_URLS: Record<string, string | undefined> = {
   openai: undefined,
-  qwen: process.env.QWEN_LLM_BASE_URL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  siliconflow: process.env.SILICONFLOW_LLM_BASE_URL ?? 'https://api.siliconflow.cn/v1',
-  deepseek: process.env.DEEPSEEK_LLM_BASE_URL ?? 'https://api.deepseek.com',
+  qwen: process.env.QWEN_EMBEDDING_BASE_URL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  siliconflow: process.env.SILICONFLOW_EMBEDDING_BASE_URL ?? 'https://api.siliconflow.cn/v1',
+  deepseek: process.env.DEEPSEEK_EMBEDDING_BASE_URL ?? 'https://api.deepseek.com',
 };
 
 // ─── Provider registry ───────────────────────────────────────────────────────
@@ -53,8 +54,8 @@ const PROVIDER_REGISTRY: Record<string, EmbeddingProviderEntry> = {
     buildArgs: (c) => ({
       azureOpenAIApiKey: c.apiKey,
       azureOpenAIApiDeploymentName: c.model,
-      azureOpenAIApiInstanceName: c.baseUrl ?? process.env.AZURE_OPENAI_INSTANCE,
-      azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-02-01',
+      azureOpenAIApiInstanceName: c.azureOpenAIApiInstanceName ?? c.baseUrl,
+      azureOpenAIApiVersion: c.azureOpenAIApiVersion ?? '2024-02-01',
       dimensions: c.embeddingDims,
     }),
   },
@@ -78,7 +79,7 @@ const PROVIDER_REGISTRY: Record<string, EmbeddingProviderEntry> = {
     className: 'BedrockEmbeddings',
     buildArgs: (c) => ({
       model: c.model ?? 'amazon.titan-embed-text-v1',
-      region: process.env.AWS_REGION ?? 'us-east-1',
+      region: c.region ?? 'us-east-1',
     }),
     noApiKey: true,
   },
@@ -150,6 +151,9 @@ interface EmbeddingConfig {
   model?: string;
   embeddingDims?: number;
   baseUrl?: string;
+  azureOpenAIApiInstanceName?: string;
+  azureOpenAIApiVersion?: string;
+  region?: string;
 }
 
 export async function createEmbeddings(config: EmbeddingConfig): Promise<Embeddings> {
@@ -181,7 +185,7 @@ export async function createEmbeddings(config: EmbeddingConfig): Promise<Embeddi
     const { OllamaEmbeddings } = await import('@langchain/ollama');
     return new OllamaEmbeddings({
       model: model ?? 'nomic-embed-text',
-      baseUrl: config.baseUrl ?? process.env.OLLAMA_LLM_BASE_URL ?? 'http://localhost:11434',
+      baseUrl: config.baseUrl ?? process.env.OLLAMA_EMBEDDING_BASE_URL ?? 'http://localhost:11434',
     });
   }
 
@@ -245,11 +249,15 @@ export async function createEmbeddings(config: EmbeddingConfig): Promise<Embeddi
 
 /** Create Embeddings from environment variables (backward compat). */
 export async function createEmbeddingsFromEnv(): Promise<Embeddings> {
+  const config = loadConfigFromEnv().embedder ?? { provider: 'qwen', config: {} };
+  const configValues = (config.config ?? {}) as Record<string, unknown>;
+  if (!('apiKey' in configValues) || !configValues.apiKey) {
+    throw new PowerMemInitError(
+      'EMBEDDING_API_KEY is required. Set it in your .env file or environment.'
+    );
+  }
   return createEmbeddings({
-    provider: process.env.EMBEDDING_PROVIDER ?? 'openai',
-    apiKey: process.env.EMBEDDING_API_KEY,
-    model: process.env.EMBEDDING_MODEL,
-    embeddingDims: process.env.EMBEDDING_DIMS ? parseInt(process.env.EMBEDDING_DIMS, 10) : undefined,
-    baseUrl: process.env.EMBEDDING_BASE_URL,
-  });
+    provider: config.provider,
+    ...configValues,
+  } as EmbeddingConfig);
 }

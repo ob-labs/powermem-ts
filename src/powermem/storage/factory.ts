@@ -66,7 +66,7 @@ export class GraphStoreFactory {
 
 VectorStoreFactory.register('sqlite', async (config) => {
   const { SQLiteStore } = await import('./sqlite/sqlite.js');
-  const dbPath = (config.path as string) ?? ':memory:';
+  const dbPath = (config.path as string) ?? './data/powermem_dev.db';
   return new SQLiteStore(dbPath);
 });
 
@@ -85,8 +85,14 @@ VectorStoreFactory.register('pgvector', async (config) => {
   const { PgVectorStore } = await import('./pgvector/pgvector.js');
   return PgVectorStore.create({
     connectionString: config.connectionString as string | undefined,
-    tableName: config.tableName as string | undefined,
-    dimensions: config.dimensions as number | undefined,
+    tableName: (config.tableName as string | undefined) ?? (config.collectionName as string | undefined),
+    dimensions: (config.dimensions as number | undefined) ?? (config.embeddingModelDims as number | undefined),
+    dbname: config.dbname as string | undefined,
+    host: config.host as string | undefined,
+    port: typeof config.port === 'number' ? config.port as number : undefined,
+    user: config.user as string | undefined,
+    password: config.password as string | undefined,
+    sslmode: config.sslmode as string | undefined,
   });
 });
 
@@ -96,6 +102,23 @@ VectorStoreFactory.register('postgres', async (config) => {
 });
 VectorStoreFactory.register('pg', async (config) => {
   return VectorStoreFactory.create('pgvector', config);
+});
+VectorStoreFactory.register('oceanbase', async (config) => {
+  const host = (config.host as string | undefined) ?? '';
+  if (host) {
+    throw new Error(
+      'powermem-ts currently supports OceanBase vector storage only in embedded mode. ' +
+      'Leave OCEANBASE_HOST empty to use OCEANBASE_PATH-backed storage.'
+    );
+  }
+
+  return VectorStoreFactory.create('seekdb', {
+    path: (config.obPath as string | undefined) ?? './seekdb_data',
+    database: (config.dbName as string | undefined) ?? 'test',
+    collectionName: (config.collectionName as string | undefined) ?? 'power_mem',
+    distance: (config.vidxMetricType as 'cosine' | 'l2' | 'inner_product' | undefined) ?? 'l2',
+    dimension: (config.embeddingModelDims as number | undefined) ?? (config.dimensions as number | undefined),
+  });
 });
 
 GraphStoreFactory.register('oceanbase', async (config) => {

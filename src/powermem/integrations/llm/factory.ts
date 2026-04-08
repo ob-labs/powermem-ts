@@ -19,6 +19,7 @@
  */
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { PowerMemInitError } from '../../errors/index.js';
+import { loadConfigFromEnv } from '../../config_loader.js';
 
 // ─── OpenAI-compatible base URLs ─────────────────────────────────────────────
 
@@ -46,8 +47,8 @@ const PROVIDER_REGISTRY: Record<string, LLMProviderEntry> = {
     buildArgs: (c) => ({
       azureOpenAIApiKey: c.apiKey,
       azureOpenAIApiDeploymentName: c.model,
-      azureOpenAIApiInstanceName: c.baseUrl ?? process.env.AZURE_OPENAI_INSTANCE,
-      azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-02-01',
+      azureOpenAIApiInstanceName: c.azureOpenAIApiInstanceName ?? c.baseUrl,
+      azureOpenAIApiVersion: c.azureOpenAIApiVersion ?? '2024-02-01',
       temperature: c.temperature ?? 0.1,
       maxTokens: c.maxTokens ?? 2000,
     }),
@@ -77,7 +78,7 @@ const PROVIDER_REGISTRY: Record<string, LLMProviderEntry> = {
     className: 'ChatBedrockConverse',
     buildArgs: (c) => ({
       model: c.model ?? 'anthropic.claude-3-sonnet-20240229-v1:0',
-      region: process.env.AWS_REGION ?? 'us-east-1',
+      region: c.region ?? 'us-east-1',
       temperature: c.temperature ?? 0.1,
       maxTokens: c.maxTokens ?? 2000,
     }),
@@ -187,6 +188,11 @@ interface LLMConfig {
   maxTokens?: number;
   topP?: number;
   baseUrl?: string;
+  topK?: number;
+  enableSearch?: boolean;
+  azureOpenAIApiInstanceName?: string;
+  azureOpenAIApiVersion?: string;
+  region?: string;
 }
 
 export async function createLLM(config: LLMConfig): Promise<BaseChatModel> {
@@ -288,10 +294,15 @@ export async function createLLM(config: LLMConfig): Promise<BaseChatModel> {
 
 /** Create LLM from environment variables (backward compat). */
 export async function createLLMFromEnv(): Promise<BaseChatModel> {
+  const config = loadConfigFromEnv().llm ?? { provider: 'qwen', config: {} };
+  const configValues = (config.config ?? {}) as Record<string, unknown>;
+  if (!('apiKey' in configValues) || !configValues.apiKey) {
+    throw new PowerMemInitError(
+      'LLM_API_KEY is required for the "infer" feature. Set it in your .env file or environment.'
+    );
+  }
   return createLLM({
-    provider: process.env.LLM_PROVIDER ?? 'openai',
-    apiKey: process.env.LLM_API_KEY,
-    model: process.env.LLM_MODEL,
-    baseUrl: process.env.LLM_BASE_URL,
-  });
+    provider: config.provider,
+    ...configValues,
+  } as LLMConfig);
 }

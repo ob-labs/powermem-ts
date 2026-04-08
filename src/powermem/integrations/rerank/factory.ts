@@ -7,23 +7,30 @@ import type { BaseRerankConfig } from './config/base.js';
 import type { SearchHit } from '../../types/responses.js';
 import type { RerankerFn } from '../../types/options.js';
 import { PowerMemInitError } from '../../errors/index.js';
+import { loadConfigFromEnv } from '../../config_loader.js';
 
-const RERANK_BASE_URLS: Record<string, string> = {
+const RERANK_BASE_URLS: Partial<Record<string, string>> = {
   jina: 'https://api.jina.ai',
   cohere: 'https://api.cohere.com',
+  siliconflow: 'https://api.siliconflow.cn',
 };
 
 export async function createReranker(config: BaseRerankConfig): Promise<RerankProvider> {
-  const provider = (config.provider ?? 'jina').toLowerCase();
+  const provider = (config.provider ?? 'qwen').toLowerCase();
   const apiKey = config.apiKey;
 
   if (!apiKey) {
     throw new PowerMemInitError('Rerank API key is required.');
   }
 
-  if (['jina', 'cohere', 'openai_compat', 'siliconflow'].includes(provider)) {
+  if (['jina', 'cohere', 'openai_compat', 'siliconflow', 'qwen', 'zai', 'generic'].includes(provider)) {
     const { OpenAICompatReranker } = await import('./openai-compat.js');
     const baseUrl = config.apiBaseUrl ?? RERANK_BASE_URLS[provider];
+    if (!baseUrl) {
+      throw new PowerMemInitError(
+        `Rerank provider "${provider}" requires RERANKER_API_BASE_URL or provider-specific base URL configuration.`
+      );
+    }
     return new OpenAICompatReranker({
       apiKey,
       model: config.model,
@@ -36,13 +43,12 @@ export async function createReranker(config: BaseRerankConfig): Promise<RerankPr
 
 /** Create RerankProvider from environment variables. */
 export async function createRerankerFromEnv(): Promise<RerankProvider> {
+  const config = loadConfigFromEnv().reranker;
   return createReranker({
-    provider: process.env.RERANK_PROVIDER ?? 'jina',
-    apiKey: process.env.RERANK_API_KEY,
-    model: process.env.RERANK_MODEL,
-    apiBaseUrl: process.env.RERANK_BASE_URL,
-    topN: process.env.RERANK_TOP_N ? parseInt(process.env.RERANK_TOP_N, 10) : undefined,
-  });
+    enabled: config?.enabled,
+    provider: config?.provider,
+    ...(config?.config as Record<string, unknown> | undefined),
+  } as BaseRerankConfig);
 }
 
 /**
