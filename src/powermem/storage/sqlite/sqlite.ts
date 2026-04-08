@@ -223,17 +223,24 @@ export class SQLiteStore implements VectorStore {
       .prepare(`SELECT id, rank FROM memories_fts WHERE content MATCH ? ORDER BY rank LIMIT ?`)
       .all(ftsQuery, limit * 2) as Array<{ id: string; rank: number }>;
 
-    // FTS5 rank is negative (lower = better), normalize to 0-1
+    // FTS5 rank is negative (lower = better). Convert it to a stable 0-1
+    // relevance score before blending so hybrid scores do not exceed 1.
     const ftsScores = new Map<string, number>();
     if (ftsRows.length > 0) {
-      const maxRank = Math.abs(ftsRows[ftsRows.length - 1].rank) || 1;
+      const absRanks = ftsRows.map((row) => Math.abs(row.rank));
+      const bestRank = Math.max(...absRanks);
+      const worstRank = Math.min(...absRanks);
+      const rankRange = bestRank - worstRank;
       for (const row of ftsRows) {
-        // Normalize: rank is negative, convert to positive 0-1 score
-        ftsScores.set(String(row.id), Math.abs(row.rank) / maxRank);
+        const absRank = Math.abs(row.rank);
+        const normalized = rankRange === 0
+          ? 1
+          : (absRank - worstRank) / rankRange;
+        ftsScores.set(String(row.id), normalized);
       }
     }
 
-    // Combine scores with RRF (Reciprocal Rank Fusion) style blending
+    // Blend bounded vector and FTS scores in the same 0-1 range.
     const combined = new Map<string, VectorStoreSearchMatch>();
 
     for (const vr of vectorResults) {
