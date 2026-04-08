@@ -209,8 +209,8 @@ export async function createLLM(config: LLMConfig): Promise<BaseChatModel> {
     const { ChatOpenAI } = await import('@langchain/openai');
     const baseURL = config.baseUrl ?? OPENAI_COMPAT_BASE_URLS[provider];
     return new ChatOpenAI({
-      openAIApiKey: apiKey,
-      modelName: model ?? 'gpt-4o-mini',
+      apiKey,
+      model: model ?? 'gpt-4o-mini',
       temperature, maxTokens, topP,
       ...(baseURL ? { configuration: { baseURL } } : {}),
     });
@@ -296,11 +296,6 @@ export async function createLLM(config: LLMConfig): Promise<BaseChatModel> {
 export async function createLLMFromEnv(): Promise<BaseChatModel> {
   const config = loadConfigFromEnv().llm ?? { provider: 'qwen', config: {} };
   const configValues = (config.config ?? {}) as Record<string, unknown>;
-  if (!('apiKey' in configValues) || !configValues.apiKey) {
-    throw new PowerMemInitError(
-      'LLM_API_KEY is required for the "infer" feature. Set it in your .env file or environment.'
-    );
-  }
   return createLLM({
     provider: config.provider,
     ...configValues,
