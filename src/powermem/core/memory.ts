@@ -36,7 +36,6 @@ import { StorageAdapter } from '../storage/adapter.js';
 import { MemoryOptimizer } from '../intelligence/memory-optimizer.js';
 import { calculateStatsFromMemories } from '../utils/stats.js';
 import { extractTextFromContent, hasVisionContent, hasAudioContent, parseVisionMessages, parseAudioMessages } from '../utils/messages.js';
-import { getDefaultHomeDir } from '../utils/platform.js';
 import { ErrorCode, PowerMemError } from '../errors/index.js';
 import { MemoryBase } from './base.js';
 import { getFactRetrievalPrompt, buildUpdateMemoryPrompt } from '../prompts/intelligent-memory-prompts.js';
