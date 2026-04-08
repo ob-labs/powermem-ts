@@ -26,7 +26,7 @@ describe('version', () => {
 describe('MemoryConfig parsing', () => {
   it('parses minimal config with defaults', () => {
     const config = parseMemoryConfig({});
-    expect(config.vectorStore.provider).toBe('sqlite');
+    expect(config.vectorStore.provider).toBe('seekdb');
     expect(config.llm.provider).toBe('qwen');
     expect(config.embedder.provider).toBe('qwen');
     expect(config.version).toBe('v1.1');
@@ -106,6 +106,7 @@ describe('loadConfigFromEnv', () => {
     'LLM_',
     'EMBEDDING_',
     'DATABASE_',
+    'SEEKDB_',
     'SQLITE_',
     'INTELLIGENT_MEMORY_',
     'RERANKER_',
@@ -204,11 +205,12 @@ describe('loadConfigFromEnv', () => {
     expect(vectorStoreConfig.path).toBe('/tmp/test.db');
   });
 
-  it('defaults to sqlite when no DATABASE_PROVIDER', () => {
+  it('defaults to seekdb when no DATABASE_PROVIDER', () => {
     const config = loadConfigFromEnv();
     const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
-    expect(config.vectorStore!.provider).toBe('sqlite');
-    expect(vectorStoreConfig.path).toBe('./data/powermem_dev.db');
+    expect(config.vectorStore!.provider).toBe('seekdb');
+    expect(vectorStoreConfig.path).toBe('./seekdb_data');
+    expect(vectorStoreConfig.database).toBe('test');
   });
 
   it('normalizes postgres provider to pgvector', () => {
@@ -225,16 +227,26 @@ describe('loadConfigFromEnv', () => {
     expect(vectorStoreConfig.tableName).toBe('memories');
   });
 
-  it('normalizes seekdb provider to oceanbase embedded defaults', () => {
+  it('loads seekdb provider with embedded defaults', () => {
     process.env.DATABASE_PROVIDER = 'seekdb';
 
     const config = loadConfigFromEnv();
     const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
-    expect(config.vectorStore!.provider).toBe('oceanbase');
-    expect(vectorStoreConfig.host).toBe('');
-    expect(vectorStoreConfig.dbName).toBe('test');
+    expect(config.vectorStore!.provider).toBe('seekdb');
+    expect(vectorStoreConfig.path).toBe('./seekdb_data');
+    expect(vectorStoreConfig.database).toBe('test');
     expect(vectorStoreConfig.collectionName).toBe('power_mem');
-    expect(vectorStoreConfig.vidxMetricType).toBe('l2');
+    expect(vectorStoreConfig.distance).toBe('l2');
+  });
+
+  it('keeps oceanbase provider for explicit oceanbase config', () => {
+    process.env.DATABASE_PROVIDER = 'oceanbase';
+
+    const config = loadConfigFromEnv();
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
+    expect(config.vectorStore!.provider).toBe('oceanbase');
+    expect(vectorStoreConfig.obPath).toBe('./seekdb_data');
+    expect(vectorStoreConfig.dbName).toBe('test');
   });
 
   it('loads intelligent memory settings from env', () => {
@@ -329,7 +341,7 @@ describe('loadConfigFromEnv', () => {
 describe('createConfig', () => {
   it('creates config with defaults', () => {
     const config = createConfig();
-    expect(config.vectorStore!.provider).toBe('sqlite');
+    expect(config.vectorStore!.provider).toBe('seekdb');
     expect(config.llm!.provider).toBe('qwen');
     expect(config.embedder!.provider).toBe('qwen');
     expect(config.reranker!.enabled).toBe(false);
@@ -347,7 +359,7 @@ describe('createConfig', () => {
     const llmConfig = config.llm!.config as Record<string, unknown>;
     const embedderConfig = config.embedder!.config as Record<string, unknown>;
     const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
-    expect(config.vectorStore!.provider).toBe('oceanbase');
+    expect(config.vectorStore!.provider).toBe('seekdb');
     expect(config.llm!.provider).toBe('openai');
     expect(llmConfig.apiKey).toBe('sk-test');
     expect(embedderConfig.embeddingDims).toBe(768);

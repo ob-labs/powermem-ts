@@ -59,7 +59,7 @@ export async function createServerApp(options: ServerAppOptions = {}) {
 
   // ─── Memory instance ──────────────────────────────────────────────
   const memory = options.memory ?? await Memory.create({
-    dbPath: options.dbPath ?? ':memory:',
+    ...(options.dbPath !== undefined ? { dbPath: options.dbPath } : {}),
     embeddings: options.embeddings,
   });
   const startTime = Date.now();

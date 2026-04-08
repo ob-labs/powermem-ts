@@ -20,7 +20,7 @@ export function createSystemRouter(memoryService: MemoryService, startTime: numb
       success: true,
       data: {
         version: VERSION,
-        storageType: 'sqlite',
+        storageType: memoryService.getStorageType(),
         uptime,
         status: 'running',
         nodeVersion: process.version,

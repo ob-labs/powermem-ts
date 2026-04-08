@@ -8,7 +8,7 @@ import { loadEnvFile } from '../utils/env.js';
 import { autoConfig } from '../config_loader.js';
 import { parseMemoryConfig } from '../configs.js';
 import { GraphStoreFactory, VectorStoreFactory } from '../storage/factory.js';
-import { createEmbeddings, createEmbeddingsFromEnv, createSparseEmbedder } from '../integrations/embeddings/factory.js';
+import { createEmbeddings, createEmbeddingsFromEnv } from '../integrations/embeddings/factory.js';
 import { createLLM, createLLMFromEnv } from '../integrations/llm/factory.js';
 import { createRerankerFnFromConfig } from '../integrations/rerank/factory.js';
 import type { VectorStore, VectorStoreFilter, VectorStoreRecord, GraphStoreBase } from '../storage/base.js';
@@ -154,18 +154,6 @@ export class Memory extends MemoryBase {
     const rawConfig = options.config ?? autoConfig();
     const config = parseMemoryConfig(rawConfig);
 
-    let sparseEmbedder: Awaited<ReturnType<typeof createSparseEmbedder>> | undefined;
-    if (config.sparseEmbedder?.provider) {
-      try {
-        sparseEmbedder = await createSparseEmbedder({
-          provider: config.sparseEmbedder.provider,
-          ...(config.sparseEmbedder.config as Record<string, unknown>),
-        } as Parameters<typeof createSparseEmbedder>[0]);
-      } catch {
-        // Sparse embedder stays optional.
-      }
-    }
-
     let store: VectorStore | undefined;
     if (options.store) {
       store = options.store;
@@ -181,7 +169,6 @@ export class Memory extends MemoryBase {
       try {
         store = await VectorStoreFactory.create(config.vectorStore.provider, {
           ...(config.vectorStore.config as Record<string, unknown>),
-          ...(sparseEmbedder ? { sparseEmbedder } : {}),
         });
       } catch {
         const dbPath = './data/powermem_dev.db';
@@ -842,6 +829,16 @@ export class Memory extends MemoryBase {
     await this.telemetryManager.flush();
     this.auditLogger.close();
     await this.store.close();
+  }
+
+  getStorageType(): string {
+    if (this.store instanceof SQLiteStore) return 'sqlite';
+
+    const ctorName = this.store.constructor?.name?.toLowerCase() ?? '';
+    if (ctorName.includes('seekdb')) return 'seekdb';
+    if (ctorName.includes('pgvector')) return 'pgvector';
+    if (ctorName.includes('oceanbase')) return 'oceanbase';
+    return ctorName || 'unknown';
   }
 
   async getStatistics(options: FilterParams = {}): Promise<Record<string, unknown>> {

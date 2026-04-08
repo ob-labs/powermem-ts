@@ -7,6 +7,7 @@ import { getDefaultEnvFile } from './settings.js';
 import type { MemoryConfigInput } from './configs.js';
 
 const DEFAULT_SQLITE_PATH = './data/powermem_dev.db';
+const DEFAULT_SEEKDB_PATH = './seekdb_data';
 const DEFAULT_QWEN_LLM_MODEL = 'qwen-plus';
 const DEFAULT_QWEN_EMBEDDING_MODEL = 'text-embedding-v4';
 
@@ -55,10 +56,9 @@ function setIfDefined(target: Record<string, unknown>, key: string, value: unkno
 }
 
 function normalizeDatabaseProvider(provider?: string): string {
-  const normalized = (provider ?? 'sqlite').trim().toLowerCase();
+  const normalized = (provider ?? 'seekdb').trim().toLowerCase();
   if (normalized === 'postgres') return 'pgvector';
-  if (normalized === 'seekdb') return 'oceanbase';
-  return normalized || 'sqlite';
+  return normalized || 'seekdb';
 }
 
 function normalizeMode(value?: string, fallback = 'auto'): string {
@@ -244,6 +244,13 @@ function readDatabaseFromEnv(): { provider: string; config: Record<string, unkno
     config.collectionName = getEnvValue('SQLITE_COLLECTION') ?? 'memories';
     config.enableWal = readBool('SQLITE_ENABLE_WAL') ?? true;
     config.timeout = readInt('SQLITE_TIMEOUT') ?? 30;
+  } else if (provider === 'seekdb') {
+    config.path = getEnvValue('SEEKDB_PATH', 'OCEANBASE_PATH') ?? DEFAULT_SEEKDB_PATH;
+    config.database = getEnvValue('SEEKDB_DATABASE', 'OCEANBASE_DATABASE') ?? 'test';
+    config.collectionName = getEnvValue('SEEKDB_COLLECTION', 'OCEANBASE_COLLECTION') ?? 'power_mem';
+    config.distance = getEnvValue('SEEKDB_DISTANCE', 'OCEANBASE_VECTOR_METRIC_TYPE') ?? 'l2';
+    setIfDefined(config, 'dimension', readInt('SEEKDB_DIMENSION', 'SEEKDB_EMBEDDING_MODEL_DIMS', 'OCEANBASE_EMBEDDING_MODEL_DIMS'));
+    setIfDefined(config, 'embeddingModelDims', readInt('SEEKDB_DIMENSION', 'SEEKDB_EMBEDDING_MODEL_DIMS', 'OCEANBASE_EMBEDDING_MODEL_DIMS'));
   } else if (provider === 'pgvector') {
     setIfDefined(config, 'connectionString', getEnvValue('VECTOR_STORE_CONNECTION_STRING', 'POSTGRES_CONNECTION_STRING'));
     config.dbname = getEnvValue('POSTGRES_DATABASE') ?? 'postgres';
@@ -259,7 +266,7 @@ function readDatabaseFromEnv(): { provider: string; config: Record<string, unkno
     setIfDefined(config, 'sslmode', getEnvValue('DATABASE_SSLMODE'));
   } else if (provider === 'oceanbase') {
     config.host = getEnvValue('OCEANBASE_HOST') ?? '';
-    config.obPath = getEnvValue('OCEANBASE_PATH') ?? './seekdb_data';
+    config.obPath = getEnvValue('OCEANBASE_PATH') ?? DEFAULT_SEEKDB_PATH;
     config.port = getEnvValue('OCEANBASE_PORT') ?? '2881';
     config.user = getEnvValue('OCEANBASE_USER') ?? 'root@test';
     config.password = getEnvValue('OCEANBASE_PASSWORD') ?? '';
@@ -273,7 +280,6 @@ function readDatabaseFromEnv(): { provider: string; config: Record<string, unkno
     config.textField = getEnvValue('OCEANBASE_TEXT_FIELD') ?? 'document';
     config.metadataField = getEnvValue('OCEANBASE_METADATA_FIELD') ?? 'metadata';
     config.vidxName = getEnvValue('OCEANBASE_VIDX_NAME') ?? 'vidx';
-    config.includeSparse = readBool('OCEANBASE_INCLUDE_SPARSE', 'SPARSE_VECTOR_ENABLE') ?? false;
     config.enableNativeHybrid = readBool('OCEANBASE_ENABLE_NATIVE_HYBRID') ?? false;
   }
 
@@ -535,10 +541,18 @@ function buildDefaultDatabaseConfig(provider: string, databaseConfig?: Record<st
       timeout: 30,
     };
   }
+  if (provider === 'seekdb') {
+    return {
+      path: DEFAULT_SEEKDB_PATH,
+      database: 'test',
+      collectionName: 'power_mem',
+      distance: 'l2',
+    };
+  }
   if (provider === 'oceanbase') {
     return {
       host: '',
-      obPath: './seekdb_data',
+      obPath: DEFAULT_SEEKDB_PATH,
       port: '2881',
       user: 'root@test',
       password: '',
@@ -546,7 +560,6 @@ function buildDefaultDatabaseConfig(provider: string, databaseConfig?: Record<st
       collectionName: 'power_mem',
       indexType: 'HNSW',
       vidxMetricType: 'l2',
-      includeSparse: false,
       enableNativeHybrid: false,
     };
   }

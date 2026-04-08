@@ -150,14 +150,16 @@ describeIf('SeekDBStore', () => {
     expect(results[0].content).toBe('alice data');
   });
 
-  it('hybridSearch promotes keyword matches by query text', async () => {
+  it('hybridSearch uses native full-text matches to promote keyword hits', async () => {
     await store.insert('1', [0, 1, 0], makePayload({ data: 'TypeScript hybrid retrieval notes' }));
     await store.insert('2', [1, 0, 0], makePayload({ data: 'Completely unrelated content' }));
 
     const results = await store.hybridSearch([1, 0, 0], 'TypeScript hybrid', {}, 10);
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].content).toContain('TypeScript');
+    expect(results[0].metadata?._fts_score).toBeDefined();
     expect(results[0].metadata?._quality_score).toBeDefined();
+    expect(results[0].metadata?._sparse_similarity).toBeUndefined();
   });
 
   it('search and hybridSearch respect scope/category filters', async () => {

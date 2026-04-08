@@ -8,6 +8,10 @@ import type {
 export class MemoryService {
   constructor(private readonly memory: Memory) {}
 
+  getStorageType() {
+    return this.memory.getStorageType();
+  }
+
   add(content: string, options: Record<string, unknown> = {}) {
     return this.memory.add(content, options as never);
   }

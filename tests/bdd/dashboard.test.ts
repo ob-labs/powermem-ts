@@ -46,6 +46,7 @@ describe('BDD: REST API', () => {
       const json = await res.json();
       expect(json.success).toBe(true);
       expect(json.data.version).toBe('0.3.0');
+      expect(json.data.storageType).toBe('sqlite');
       expect(json.data.status).toBe('running');
       expect(typeof json.data.uptime).toBe('number');
     });

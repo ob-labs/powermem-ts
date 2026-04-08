@@ -6,14 +6,6 @@ import type {
   VectorStoreListOptions,
 } from '../base.js';
 import path from 'node:path';
-import {
-  BM25SparseEmbedder,
-  CHINESE_STOPWORDS,
-  ENGLISH_STOPWORDS,
-  sparseDotProduct,
-  tokenizeCJK,
-  type SparseEmbedder,
-} from '../../integrations/embeddings/sparse.js';
 
 export interface SeekDBStoreOptions {
   path: string;
@@ -21,8 +13,6 @@ export interface SeekDBStoreOptions {
   collectionName?: string;
   distance?: 'cosine' | 'l2' | 'inner_product';
   dimension?: number;
-  includeSparse?: boolean;
-  sparseEmbedder?: SparseEmbedder;
 }
 
 export class SeekDBStore implements VectorStore {
@@ -36,10 +26,6 @@ export class SeekDBStore implements VectorStore {
 
   private readonly clientKey: string;
 
-  private readonly includeSparse: boolean;
-
-  private readonly sparseEmbedder?: SparseEmbedder;
-
   private isClosed = false;
 
   private constructor(
@@ -47,15 +33,11 @@ export class SeekDBStore implements VectorStore {
     collection: any,
     distanceMetric: 'cosine' | 'l2' | 'inner_product',
     clientKey: string,
-    includeSparse: boolean,
-    sparseEmbedder?: SparseEmbedder,
   ) {
     this.client = client;
     this.collection = collection;
     this.distanceMetric = distanceMetric;
     this.clientKey = clientKey;
-    this.includeSparse = includeSparse;
-    this.sparseEmbedder = sparseEmbedder;
   }
 
   private static buildClientKey(dbPath: string, database: string): string {
@@ -104,7 +86,7 @@ export class SeekDBStore implements VectorStore {
   }
 
   static async create(options: SeekDBStoreOptions): Promise<SeekDBStore> {
-    const { SeekdbClient, Schema, VectorIndexConfig } = await import('seekdb');
+    const { SeekdbClient, Schema, VectorIndexConfig, FulltextIndexConfig } = await import('seekdb') as any;
 
     const database = options.database ?? 'test';
     const { client, key } = SeekDBStore.acquireClient(options.path, database, SeekdbClient);
@@ -114,6 +96,7 @@ export class SeekDBStore implements VectorStore {
 
     try {
       const schema = new Schema({
+        fulltextIndex: new FulltextIndexConfig(),
         vectorIndex: new VectorIndexConfig({
           hnsw: { dimension, distance },
           embeddingFunction: null, // We pass pre-computed embeddings, no auto-vectorization
@@ -130,8 +113,6 @@ export class SeekDBStore implements VectorStore {
         collection,
         distance,
         key,
-        options.includeSparse ?? false,
-        options.sparseEmbedder,
       );
     } catch (error) {
       await SeekDBStore.releaseClient(key);
@@ -265,103 +246,64 @@ export class SeekDBStore implements VectorStore {
     };
   }
 
-  private buildDefaultSparseEmbedder(): SparseEmbedder {
-    const stopwords = new Set([...ENGLISH_STOPWORDS, ...CHINESE_STOPWORDS]);
-    return new BM25SparseEmbedder({
-      stopwords,
-      tokenizer: (text: string) => tokenizeCJK(text, stopwords),
-    });
-  }
-
-  private async loadHybridCandidates(filters: VectorStoreFilter): Promise<Array<{
-    id: string;
-    content: string;
-    metadata: Record<string, any>;
-    createdAt?: string;
-    updatedAt?: string;
-    accessCount: number;
-  }>> {
-    const where = this.buildWhereClause(filters);
-    const result = await this.collection.get({
-      ...(where ? { where } : {}),
-      include: ['documents', 'metadatas'],
-    });
-    const candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }> = [];
-
-    if (!result.ids) return candidates;
-    for (let i = 0; i < result.ids.length; i++) {
-      const metadata = (result.metadatas?.[i] ?? {}) as Record<string, any>;
-      candidates.push({
-        id: result.ids[i],
-        content: result.documents?.[i] ?? '',
-        metadata,
-        createdAt: metadata.created_at || undefined,
-        updatedAt: metadata.updated_at || undefined,
-        accessCount: metadata.access_count ?? 0,
-      });
+  private unwrapResultArray<T>(value: T[] | T[][] | undefined): T[] {
+    if (!Array.isArray(value)) return [];
+    if (value.length > 0 && Array.isArray(value[0])) {
+      return value[0] as T[];
     }
-    return candidates;
+    return value as T[];
   }
 
-  private fullTextSearch(
+  private normalizeScores(rawScores: number[]): number[] {
+    if (rawScores.length === 0) return [];
+    const maxScore = Math.max(...rawScores);
+    const minScore = Math.min(...rawScores);
+    const range = maxScore - minScore;
+    if (range === 0) {
+      return rawScores.map(() => 1);
+    }
+    return rawScores.map((score) => (score - minScore) / range);
+  }
+
+  private async nativeFullTextSearch(
     queryText: string,
-    candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }>,
+    filters: VectorStoreFilter,
     limit: number,
-  ): VectorStoreSearchMatch[] {
-    const stopwords = new Set([...ENGLISH_STOPWORDS, ...CHINESE_STOPWORDS]);
-    const queryTokens = tokenizeCJK(queryText, stopwords);
-    if (queryTokens.length === 0) return [];
+  ): Promise<VectorStoreSearchMatch[]> {
+    const trimmedQuery = queryText.trim();
+    if (!trimmedQuery) return [];
 
-    const uniqueQueryTokens = Array.from(new Set(queryTokens));
+    const where = this.buildWhereClause(filters);
+    const result = await this.collection.hybridSearch({
+      query: {
+        whereDocument: { $contains: trimmedQuery },
+        ...(where ? { where } : {}),
+      },
+      nResults: limit,
+      include: ['documents', 'metadatas', 'distances'],
+    });
+
+    const ids = this.unwrapResultArray<string>(result.ids);
+    if (ids.length === 0) return [];
+
+    const documents = this.unwrapResultArray<string | null>(result.documents);
+    const metadatas = this.unwrapResultArray<Record<string, any> | null>(result.metadatas);
+    const rawScores = this.unwrapResultArray<number>(result.distances).map((value) => Number(value ?? 0));
+    const normalizedScores = this.normalizeScores(rawScores);
+
     const matches: VectorStoreSearchMatch[] = [];
-    for (const candidate of candidates) {
-      const docTokens = tokenizeCJK(candidate.content, stopwords);
-      if (docTokens.length === 0) continue;
-
-      const tokenCounts = new Map<string, number>();
-      for (const token of docTokens) {
-        tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
-      }
-
-      let matchedTerms = 0;
-      let weightedHits = 0;
-      for (const token of uniqueQueryTokens) {
-        const count = tokenCounts.get(token) ?? 0;
-        if (count > 0) {
-          matchedTerms += 1;
-          weightedHits += Math.min(count, 3);
-        }
-      }
-
-      if (matchedTerms === 0) continue;
-
-      const coverage = matchedTerms / uniqueQueryTokens.length;
-      const density = Math.min(1, weightedHits / Math.max(uniqueQueryTokens.length, 1));
-      const phraseBonus = candidate.content.toLowerCase().includes(queryText.trim().toLowerCase()) ? 0.15 : 0;
-      const score = Math.max(0, Math.min(1, coverage * 0.7 + density * 0.3 + phraseBonus));
-
+    for (let i = 0; i < ids.length; i += 1) {
+      const metadata = metadatas[i] ?? {};
+      const score = normalizedScores[i] ?? 0;
       matches.push(this.toSearchMatch(
-        candidate.id,
-        candidate.content,
-        candidate.metadata,
+        ids[i],
+        documents[i] ?? '',
+        metadata,
         score,
         {
           _fts_score: score,
           _quality_score: score,
+          _native_fts_score: rawScores[i] ?? 0,
         },
       ));
     }
@@ -370,90 +312,30 @@ export class SeekDBStore implements VectorStore {
     return matches.slice(0, limit);
   }
 
-  private async sparseSearch(
-    queryText: string,
-    candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }>,
-    limit: number,
-  ): Promise<VectorStoreSearchMatch[]> {
-    if (!this.includeSparse && !this.sparseEmbedder) {
-      return [];
-    }
-
-    const embedder = this.sparseEmbedder ?? this.buildDefaultSparseEmbedder();
-    if (typeof embedder.fit === 'function') {
-      embedder.fit(candidates.map((candidate) => candidate.content));
-    }
-
-    const querySparse = await embedder.embedSparse(queryText);
-    if (querySparse.indices.length === 0) {
-      return [];
-    }
-
-    const docSparse = await embedder.embedSparseBatch(candidates.map((candidate) => candidate.content));
-    const rawScores = candidates.map((candidate, index) => ({
-      candidate,
-      raw: sparseDotProduct(querySparse, docSparse[index]),
-    })).filter((entry) => entry.raw > 0);
-
-    if (rawScores.length === 0) return [];
-
-    const maxScore = Math.max(...rawScores.map((entry) => entry.raw));
-    const minScore = Math.min(...rawScores.map((entry) => entry.raw));
-    const range = maxScore - minScore;
-
-    const matches = rawScores.map(({ candidate, raw }) => {
-      const score = range === 0 ? 1 : (raw - minScore) / range;
-      return this.toSearchMatch(
-        candidate.id,
-        candidate.content,
-        candidate.metadata,
-        score,
-        {
-          _sparse_similarity: score,
-          _quality_score: score,
-        },
-      );
-    });
-
-    matches.sort((a, b) => b.score - a.score);
-    return matches.slice(0, limit);
-  }
-
   private fuseHybridResults(
     vectorResults: VectorStoreSearchMatch[],
     textResults: VectorStoreSearchMatch[],
-    sparseResults: VectorStoreSearchMatch[],
     limit: number,
   ): VectorStoreSearchMatch[] {
     const rrfK = 60;
     const weights = {
       vector: vectorResults.length > 0 ? 0.5 : 0,
       text: textResults.length > 0 ? 0.5 : 0,
-      sparse: sparseResults.length > 0 ? 0.25 : 0,
     };
-    const weightSum = weights.vector + weights.text + weights.sparse || 1;
+    const weightSum = weights.vector + weights.text || 1;
 
     type RankedEntry = {
       base: VectorStoreSearchMatch;
       vectorScore?: number;
       textScore?: number;
-      sparseScore?: number;
       vectorRank?: number;
       textRank?: number;
-      sparseRank?: number;
     };
     const combined = new Map<string, RankedEntry>();
 
     const register = (
       result: VectorStoreSearchMatch,
-      kind: 'vector' | 'text' | 'sparse',
+      kind: 'vector' | 'text',
       rank: number,
       score: number,
     ): void => {
@@ -464,12 +346,9 @@ export class SeekDBStore implements VectorStore {
       if (kind === 'vector') {
         entry.vectorScore = score;
         entry.vectorRank = rank;
-      } else if (kind === 'text') {
+      } else {
         entry.textScore = score;
         entry.textRank = rank;
-      } else {
-        entry.sparseScore = score;
-        entry.sparseRank = rank;
       }
       if ((result.score ?? 0) > (entry.base.score ?? 0)) {
         entry.base = {
@@ -490,19 +369,16 @@ export class SeekDBStore implements VectorStore {
 
     vectorResults.forEach((result, index) => register(result, 'vector', index + 1, result.score));
     textResults.forEach((result, index) => register(result, 'text', index + 1, result.score));
-    sparseResults.forEach((result, index) => register(result, 'sparse', index + 1, result.score));
 
     const fused = Array.from(combined.values()).map((entry) => {
       const fusionScore = (
         (entry.vectorRank ? weights.vector / (rrfK + entry.vectorRank) : 0) +
-        (entry.textRank ? weights.text / (rrfK + entry.textRank) : 0) +
-        (entry.sparseRank ? weights.sparse / (rrfK + entry.sparseRank) : 0)
+        (entry.textRank ? weights.text / (rrfK + entry.textRank) : 0)
       ) / weightSum;
 
       const qualityScore = (
         (entry.vectorScore ?? 0) * weights.vector +
-        (entry.textScore ?? 0) * weights.text +
-        (entry.sparseScore ?? 0) * weights.sparse
+        (entry.textScore ?? 0) * weights.text
       ) / weightSum;
 
       return {
@@ -512,7 +388,6 @@ export class SeekDBStore implements VectorStore {
           ...(entry.base.metadata ?? {}),
           _vector_similarity: entry.vectorScore,
           _fts_score: entry.textScore,
-          _sparse_similarity: entry.sparseScore,
           _quality_score: qualityScore,
           _fusion_score: fusionScore,
         },
@@ -672,14 +547,15 @@ export class SeekDBStore implements VectorStore {
       return vectorResults.slice(0, limit);
     }
 
-    const candidates = await this.loadHybridCandidates(filters);
-    if (candidates.length === 0) {
-      return [];
+    try {
+      const textResults = await this.nativeFullTextSearch(queryText, filters, candidateLimit);
+      if (textResults.length === 0) {
+        return vectorResults.slice(0, limit);
+      }
+      return this.fuseHybridResults(vectorResults, textResults, limit);
+    } catch {
+      return vectorResults.slice(0, limit);
     }
-
-    const textResults = this.fullTextSearch(queryText, candidates, candidateLimit);
-    const sparseResults = await this.sparseSearch(queryText, candidates, candidateLimit);
-    return this.fuseHybridResults(vectorResults, textResults, sparseResults, limit);
   }
 
   async count(filters: VectorStoreFilter = {}): Promise<number> {
