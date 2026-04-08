@@ -1,11 +1,41 @@
 /**
  * Tests targeting specific uncovered lines/branches to close coverage gaps.
  */
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+
+vi.mock('../../src/powermem/settings.js', () => ({
+  getDefaultEnvFile: () => undefined,
+}));
+
 import { Memory } from '../../src/powermem/core/memory.js';
 import { SQLiteStore } from '../../src/powermem/storage/sqlite/sqlite.js';
 import { PowerMemError } from '../../src/powermem/errors/index.js';
 import { MockEmbeddings, MockLLM } from '../mocks.js';
+
+const originalEnv = { ...process.env };
+
+beforeEach(() => {
+  process.env = { ...originalEnv };
+  delete process.env.POWERMEM_ENV_FILE;
+  delete process.env.LLM_PROVIDER;
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_MODEL;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.QWEN_API_KEY;
+  delete process.env.DASHSCOPE_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_LLM_BASE_URL;
+  delete process.env.QWEN_LLM_BASE_URL;
+  delete process.env.EMBEDDING_PROVIDER;
+  delete process.env.EMBEDDING_API_KEY;
+  delete process.env.EMBEDDING_MODEL;
+  delete process.env.OPENAI_EMBEDDING_BASE_URL;
+  delete process.env.QWEN_EMBEDDING_BASE_URL;
+});
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+});
 
 // ── memory.ts — explicit store injection path ────────────────────────────
 

@@ -1,7 +1,12 @@
 /**
  * AgentMemory tests — port of Python regression/test_scenario_3_multi_agent.py.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../../../src/powermem/settings.js', () => ({
+  getDefaultEnvFile: () => undefined,
+}));
+
 import { Memory } from '../../../src/powermem/core/memory.js';
 import { AgentMemory } from '../../../src/powermem/agent/agent.js';
 import { MemoryScope, AccessPermission } from '../../../src/powermem/agent/types.js';
@@ -9,9 +14,25 @@ import { MockEmbeddings } from '../../mocks.js';
 
 describe('AgentMemory', () => {
   let agentMem: AgentMemory;
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.POWERMEM_ENV_FILE;
+    delete process.env.LLM_PROVIDER;
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_MODEL;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.QWEN_API_KEY;
+    delete process.env.DASHSCOPE_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_LLM_BASE_URL;
+    delete process.env.QWEN_LLM_BASE_URL;
+  });
 
   afterEach(async () => {
     if (agentMem) await agentMem.close();
+    process.env = { ...originalEnv };
   });
 
   async function createAgentMemory(mode = 'multi_agent') {

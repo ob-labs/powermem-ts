@@ -4,10 +4,18 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { parseMemoryConfig, validateConfig } from '../../src/powermem/configs.js';
 import { loadConfigFromEnv, autoConfig, createConfig } from '../../src/powermem/config_loader.js';
 import { getVersion } from '../../src/powermem/version.js';
+
+const { getDefaultEnvFileMock } = vi.hoisted(() => ({
+  getDefaultEnvFileMock: vi.fn<() => string | undefined>(() => undefined),
+}));
+
+vi.mock('../../src/powermem/settings.js', () => ({
+  getDefaultEnvFile: getDefaultEnvFileMock,
+}));
 
 describe('version', () => {
   it('returns a semver string', () => {
@@ -98,6 +106,7 @@ describe('loadConfigFromEnv', () => {
     'LLM_',
     'EMBEDDING_',
     'DATABASE_',
+    'SQLITE_',
     'INTELLIGENT_MEMORY_',
     'RERANKER_',
     'GRAPH_STORE_',
@@ -111,6 +120,20 @@ describe('loadConfigFromEnv', () => {
     'ENCRYPTION_',
     'POSTGRES_',
     'OCEANBASE_',
+    'OPENAI_',
+    'QWEN_',
+    'DASHSCOPE_',
+    'AZURE_OPENAI_',
+    'DEEPSEEK_',
+    'SILICONFLOW_',
+    'GOOGLE_',
+    'GEMINI_',
+    'COHERE_',
+    'MISTRAL_',
+    'TOGETHER_',
+    'GROQ_',
+    'AWS_',
+    'OLLAMA_',
     'SPARSE_EMBEDDER_',
     'QUERY_REWRITE_',
     'POWERMEM_SERVER_',
@@ -129,6 +152,9 @@ describe('loadConfigFromEnv', () => {
   ];
 
   beforeEach(() => {
+    getDefaultEnvFileMock.mockReset();
+    getDefaultEnvFileMock.mockReturnValue(undefined);
+    process.env = { ...origEnv };
     for (const key of Object.keys(process.env)) {
       if (clearPrefixes.some((prefix) => key.startsWith(prefix)) || clearKeys.includes(key)) {
         delete process.env[key];
@@ -146,10 +172,11 @@ describe('loadConfigFromEnv', () => {
     process.env.QWEN_LLM_BASE_URL = 'https://qwen.example.com/v1';
 
     const config = loadConfigFromEnv();
+    const llmConfig = config.llm!.config as Record<string, unknown>;
     expect(config.llm!.provider).toBe('qwen');
-    expect(config.llm!.config.apiKey).toBe('llm-key');
-    expect(config.llm!.config.model).toBe('qwen-plus');
-    expect(config.llm!.config.baseUrl).toBe('https://qwen.example.com/v1');
+    expect(llmConfig.apiKey).toBe('llm-key');
+    expect(llmConfig.model).toBe('qwen-plus');
+    expect(llmConfig.baseUrl).toBe('https://qwen.example.com/v1');
   });
 
   it('loads embedding config with Python-compatible aliases', () => {
@@ -160,10 +187,11 @@ describe('loadConfigFromEnv', () => {
     process.env.OPENAI_EMBEDDING_BASE_URL = 'https://emb.example.com/v1';
 
     const config = loadConfigFromEnv();
+    const embedderConfig = config.embedder!.config as Record<string, unknown>;
     expect(config.embedder!.provider).toBe('openai');
-    expect(config.embedder!.config.apiKey).toBe('embed-key');
-    expect(config.embedder!.config.embeddingDims).toBe(1536);
-    expect(config.embedder!.config.baseUrl).toBe('https://emb.example.com/v1');
+    expect(embedderConfig.apiKey).toBe('embed-key');
+    expect(embedderConfig.embeddingDims).toBe(1536);
+    expect(embedderConfig.baseUrl).toBe('https://emb.example.com/v1');
   });
 
   it('loads database config from env', () => {
@@ -171,14 +199,16 @@ describe('loadConfigFromEnv', () => {
     process.env.SQLITE_PATH = '/tmp/test.db';
 
     const config = loadConfigFromEnv();
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
     expect(config.vectorStore!.provider).toBe('sqlite');
-    expect(config.vectorStore!.config.path).toBe('/tmp/test.db');
+    expect(vectorStoreConfig.path).toBe('/tmp/test.db');
   });
 
   it('defaults to sqlite when no DATABASE_PROVIDER', () => {
     const config = loadConfigFromEnv();
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
     expect(config.vectorStore!.provider).toBe('sqlite');
-    expect(config.vectorStore!.config.path).toBe('./data/powermem_dev.db');
+    expect(vectorStoreConfig.path).toBe('./data/powermem_dev.db');
   });
 
   it('normalizes postgres provider to pgvector', () => {
@@ -189,20 +219,22 @@ describe('loadConfigFromEnv', () => {
     process.env.POSTGRES_COLLECTION = 'memories';
 
     const config = loadConfigFromEnv();
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
     expect(config.vectorStore!.provider).toBe('pgvector');
-    expect(config.vectorStore!.config.dbname).toBe('powermem');
-    expect(config.vectorStore!.config.tableName).toBe('memories');
+    expect(vectorStoreConfig.dbname).toBe('powermem');
+    expect(vectorStoreConfig.tableName).toBe('memories');
   });
 
   it('normalizes seekdb provider to oceanbase embedded defaults', () => {
     process.env.DATABASE_PROVIDER = 'seekdb';
 
     const config = loadConfigFromEnv();
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
     expect(config.vectorStore!.provider).toBe('oceanbase');
-    expect(config.vectorStore!.config.host).toBe('');
-    expect(config.vectorStore!.config.dbName).toBe('test');
-    expect(config.vectorStore!.config.collectionName).toBe('power_mem');
-    expect(config.vectorStore!.config.vidxMetricType).toBe('l2');
+    expect(vectorStoreConfig.host).toBe('');
+    expect(vectorStoreConfig.dbName).toBe('test');
+    expect(vectorStoreConfig.collectionName).toBe('power_mem');
+    expect(vectorStoreConfig.vidxMetricType).toBe('l2');
   });
 
   it('loads intelligent memory settings from env', () => {
@@ -256,11 +288,12 @@ describe('loadConfigFromEnv', () => {
     process.env.RERANKER_TOP_N = '5';
 
     const config = loadConfigFromEnv();
+    const rerankerConfig = config.reranker!.config as Record<string, unknown>;
     expect(config.reranker).toBeDefined();
     expect(config.reranker!.enabled).toBe(true);
     expect(config.reranker!.provider).toBe('jina');
-    expect(config.reranker!.config.apiKey).toBe('rerank-key');
-    expect(config.reranker!.config.topN).toBe(5);
+    expect(rerankerConfig.apiKey).toBe('rerank-key');
+    expect(rerankerConfig.topN).toBe(5);
   });
 
   it('returns disabled reranker defaults when env is not set', () => {
@@ -272,12 +305,17 @@ describe('loadConfigFromEnv', () => {
 
   it('loads POWERMEM_ENV_FILE before default env discovery', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'powermem-ts-config-'));
+    const defaultEnvPath = path.join(tempDir, 'default.env');
     const envPath = path.join(tempDir, 'custom.env');
+    fs.writeFileSync(defaultEnvPath, 'DASHSCOPE_API_KEY=from-default-env\n', 'utf8');
     fs.writeFileSync(envPath, 'DASHSCOPE_API_KEY=from-custom-env\n', 'utf8');
     process.env.POWERMEM_ENV_FILE = envPath;
+    getDefaultEnvFileMock.mockReturnValue(defaultEnvPath);
 
     const config = loadConfigFromEnv();
-    expect(config.llm!.config.apiKey).toBe('from-custom-env');
+    const llmConfig = config.llm!.config as Record<string, unknown>;
+    expect(llmConfig.apiKey).toBe('from-custom-env');
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   it('autoConfig is alias for loadConfigFromEnv', () => {
@@ -306,10 +344,13 @@ describe('createConfig', () => {
       embeddingProvider: 'openai',
       embeddingDims: 768,
     });
+    const llmConfig = config.llm!.config as Record<string, unknown>;
+    const embedderConfig = config.embedder!.config as Record<string, unknown>;
+    const vectorStoreConfig = config.vectorStore!.config as Record<string, unknown>;
     expect(config.vectorStore!.provider).toBe('oceanbase');
     expect(config.llm!.provider).toBe('openai');
-    expect(config.llm!.config.apiKey).toBe('sk-test');
-    expect(config.embedder!.config.embeddingDims).toBe(768);
-    expect(config.vectorStore!.config.embeddingModelDims).toBe(768);
+    expect(llmConfig.apiKey).toBe('sk-test');
+    expect(embedderConfig.embeddingDims).toBe(768);
+    expect(vectorStoreConfig.embeddingModelDims).toBe(768);
   });
 });
