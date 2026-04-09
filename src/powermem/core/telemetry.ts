@@ -1,4 +1,5 @@
 import type { TelemetryConfig } from '../configs.js';
+import { getCurrentDatetimeIsoformat } from '../utils/payload-datetime.js';
 
 function getConfigValue(
   config: Partial<TelemetryConfig> & Record<string, unknown>,
@@ -51,7 +52,7 @@ export class TelemetryManager {
       properties,
       userId,
       agentId,
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentDatetimeIsoformat(),
       version: '0.3.0',
     });
     if (this.events.length >= this.batchSize) {

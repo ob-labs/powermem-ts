@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import type { UserProfile } from './base.js';
 import { UserProfileStoreBase } from './base.js';
 import { SnowflakeIDGenerator } from '../../utils/snowflake.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 type ProfileRow = {
   id: string;
@@ -44,7 +45,7 @@ export class SQLiteUserProfileStore extends UserProfileStoreBase {
     const existing = this.db.prepare('SELECT id FROM user_profiles WHERE user_id = ? ORDER BY id DESC LIMIT 1')
       .get(userId) as { id: string } | undefined;
 
-    const now = new Date().toISOString();
+    const now = getCurrentDatetimeIsoformat();
     const topicsJson = topics ? JSON.stringify(topics) : null;
 
     if (existing) {

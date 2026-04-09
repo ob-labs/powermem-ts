@@ -4,6 +4,7 @@
  */
 import type { PermissionStrategy } from '../abstract/permission.js';
 import { AccessPermission } from '../types.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 interface AccessLogEntry {
   agentId: string;
@@ -55,7 +56,7 @@ export class PermissionController implements PermissionStrategy {
     memPerms.get(agentId)!.add(permission);
 
     this.logPermissionChange(memoryId, agentId, permission, 'grant', grantedBy);
-    return { success: true, memoryId, agentId, permission, grantedBy, grantedAt: new Date().toISOString() };
+    return { success: true, memoryId, agentId, permission, grantedBy, grantedAt: getCurrentDatetimeIsoformat() };
   }
 
   async revokePermission(
@@ -68,7 +69,7 @@ export class PermissionController implements PermissionStrategy {
     }
 
     this.logPermissionChange(memoryId, agentId, permission, 'revoke', revokedBy);
-    return { success: true, memoryId, agentId, permission, revokedBy, revokedAt: new Date().toISOString() };
+    return { success: true, memoryId, agentId, permission, revokedBy, revokedAt: getCurrentDatetimeIsoformat() };
   }
 
   async getPermissions(memoryId: string, agentId: string): Promise<Record<string, unknown>> {
@@ -86,14 +87,14 @@ export class PermissionController implements PermissionStrategy {
   }
 
   private logAccess(agentId: string, memoryId: string, permission: AccessPermission, result: boolean): void {
-    this.accessLog.push({ agentId, memoryId, permission, result, timestamp: new Date().toISOString() });
+    this.accessLog.push({ agentId, memoryId, permission, result, timestamp: getCurrentDatetimeIsoformat() });
   }
 
   private logPermissionChange(
     memoryId: string, agentId: string, permission: AccessPermission, action: string, performedBy: string
   ): void {
     this.accessLog.push({
-      agentId, memoryId, permission, result: true, action, performedBy, timestamp: new Date().toISOString(),
+      agentId, memoryId, permission, result: true, action, performedBy, timestamp: getCurrentDatetimeIsoformat(),
     });
   }
 }

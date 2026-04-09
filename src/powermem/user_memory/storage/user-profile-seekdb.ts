@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { UserProfile } from './base.js';
 import { UserProfileStoreBase } from './base.js';
 import { SnowflakeIDGenerator } from '../../utils/snowflake.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 type SeekDBProfileStoreConfig = {
   path?: string;
@@ -277,7 +278,7 @@ export class SeekDBUserProfileStore extends UserProfileStoreBase {
       [userId],
     ) as Array<{ id: string | number }>;
 
-    const now = new Date().toISOString();
+    const now = getCurrentDatetimeIsoformat();
     const topicsJson = topics ? JSON.stringify(topics) : null;
 
     if (existingRows.length > 0) {

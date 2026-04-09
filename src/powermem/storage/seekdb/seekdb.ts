@@ -6,6 +6,7 @@ import type {
   VectorStoreListOptions,
 } from '../base.js';
 import path from 'node:path';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 export interface SeekDBStoreOptions {
   path: string;
@@ -296,8 +297,8 @@ export class SeekDBStore implements VectorStore {
       hash: metadata.hash || undefined,
       metadata: userMetadata,
       embedding: this.parseEmbedding(row.embedding),
-      createdAt: metadata.created_at || new Date().toISOString(),
-      updatedAt: metadata.updated_at || new Date().toISOString(),
+      createdAt: metadata.created_at || getCurrentDatetimeIsoformat(),
+      updatedAt: metadata.updated_at || getCurrentDatetimeIsoformat(),
       scope: this.getScope(metadata),
       category: metadata.category || undefined,
       accessCount: this.getAccessCount(metadata),

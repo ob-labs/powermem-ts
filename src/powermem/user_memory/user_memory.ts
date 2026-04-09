@@ -21,6 +21,7 @@ import {
   getUserProfileExtractionPrompt,
   getUserProfileTopicsExtractionPrompt,
 } from '../prompts/user-profile.js';
+import { setPayloadTimezoneFromConfig } from '../utils/payload-datetime.js';
 
 export interface UserMemoryConfig {
   memory: Memory;
@@ -214,6 +215,7 @@ export class UserMemory {
   static async create(options: UserMemoryCreateOptions = {}): Promise<UserMemory> {
     const memoryOptions = buildMemoryOptions(options);
     const memory = options.memory ?? await (await import('../core/memory.js')).Memory.create(memoryOptions);
+    setPayloadTimezoneFromConfig(memory.getRuntimeConfig().timezone?.timezone);
     const runtimeConfig = memory.getRuntimeConfig();
     const resolvedProfileStoreProvider = normalizeProfileStoreProvider(
       options.profileStoreProvider ?? runtimeConfig.vectorStore.provider ?? memory.getStorageType(),

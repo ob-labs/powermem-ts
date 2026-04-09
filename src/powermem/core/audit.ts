@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AuditConfig } from '../configs.js';
+import { getCurrentDatetimeIsoformat } from '../utils/payload-datetime.js';
 
 function getConfigValue(
   config: Partial<AuditConfig> & Record<string, unknown>,
@@ -59,7 +60,7 @@ export class AuditLogger {
     if (numLevel < this.minLevel) return;
 
     const entry: AuditEntry = {
-      timestamp: new Date().toISOString(),
+      timestamp: getCurrentDatetimeIsoformat(),
       eventType,
       userId,
       agentId,

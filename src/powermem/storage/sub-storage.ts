@@ -9,6 +9,7 @@
  */
 import type { VectorStore, VectorStoreFilter } from './base.js';
 import type { Embedder } from '../integrations/embeddings/embedder.js';
+import { getCurrentDatetimeIsoformat } from '../utils/payload-datetime.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ export class SubStoreMigrationManager {
     if (!state) return;
     state.status = 'migrating';
     state.totalCount = totalCount;
-    state.startedAt = new Date().toISOString();
+    state.startedAt = getCurrentDatetimeIsoformat();
   }
 
   updateProgress(storeName: string, count: number): void {
@@ -81,7 +82,7 @@ export class SubStoreMigrationManager {
     const state = this.states.get(storeName);
     if (!state) return;
     state.status = 'completed';
-    state.completedAt = new Date().toISOString();
+    state.completedAt = getCurrentDatetimeIsoformat();
   }
 
   markFailed(storeName: string, error: string): void {
@@ -89,7 +90,7 @@ export class SubStoreMigrationManager {
     if (!state) return;
     state.status = 'failed';
     state.errorMessage = error;
-    state.completedAt = new Date().toISOString();
+    state.completedAt = getCurrentDatetimeIsoformat();
   }
 
   isReady(storeName: string): boolean {

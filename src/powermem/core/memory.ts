@@ -36,6 +36,7 @@ import { createIntelligencePlugin, type IntelligencePlugin } from '../intelligen
 import { StorageAdapter } from '../storage/adapter.js';
 import { MemoryOptimizer } from '../intelligence/memory-optimizer.js';
 import { calculateStatsFromMemories } from '../utils/stats.js';
+import { getCurrentDatetimeIsoformat, setPayloadTimezoneFromConfig } from '../utils/payload-datetime.js';
 import { extractTextFromContent, hasVisionContent, hasAudioContent, parseVisionMessages, parseAudioMessages } from '../utils/messages.js';
 import { ErrorCode, PowerMemError } from '../errors/index.js';
 import { MemoryBase } from './base.js';
@@ -52,10 +53,6 @@ interface Config {
 
 function md5(content: string): string {
   return crypto.createHash('md5').update(content, 'utf-8').digest('hex');
-}
-
-function nowISO(): string {
-  return new Date().toISOString();
 }
 
 function removeCodeBlocks(content: string): string {
@@ -173,6 +170,7 @@ export class Memory extends MemoryBase {
 
     const rawConfig = options.config ?? autoConfig();
     const config = parseMemoryConfig(rawConfig);
+    setPayloadTimezoneFromConfig(config.timezone?.timezone);
 
     let store: VectorStore | undefined;
     if (options.store) {
@@ -369,7 +367,7 @@ export class Memory extends MemoryBase {
     metadata: Record<string, unknown>;
     category?: string;
   }, createdAt?: string): Record<string, unknown> {
-    const now = nowISO();
+    const now = getCurrentDatetimeIsoformat();
     return {
       data: content,
       user_id: params.userId ?? null,
@@ -758,7 +756,7 @@ export class Memory extends MemoryBase {
       category: existing.category,
     }, existing.accessCount);
     const payload = this.buildPayload(content, normalizedParams, existing.createdAt);
-    payload.updated_at = nowISO();
+    payload.updated_at = getCurrentDatetimeIsoformat();
 
     await this.store.update(memoryId, embedding, payload);
 

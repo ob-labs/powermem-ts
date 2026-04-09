@@ -3,6 +3,7 @@
  * Port of Python powermem/intelligence/intelligent_memory_manager.py.
  */
 import type { VectorStoreSearchMatch } from '../storage/base.js';
+import { getCurrentDatetimeIsoformat } from '../utils/payload-datetime.js';
 import { ImportanceEvaluator } from './importance-evaluator.js';
 import { computeDecayFactor, applyDecay } from './ebbinghaus-algorithm.js';
 
@@ -43,8 +44,8 @@ export class IntelligentMemoryManager {
 
     for (const match of results) {
       const decay = computeDecayFactor({
-        createdAt: match.createdAt ?? new Date().toISOString(),
-        updatedAt: match.updatedAt ?? match.createdAt ?? new Date().toISOString(),
+        createdAt: match.createdAt ?? getCurrentDatetimeIsoformat(),
+        updatedAt: match.updatedAt ?? match.createdAt ?? getCurrentDatetimeIsoformat(),
         accessCount: match.accessCount ?? 0,
       });
       match.score = applyDecay(match.score, decay, this.decayWeight);

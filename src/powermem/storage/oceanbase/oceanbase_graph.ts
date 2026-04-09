@@ -1,6 +1,7 @@
 import type { GraphStoreBase } from '../base.js';
 import type { OceanBaseGraphConfig } from '../config/oceanbase.js';
 import { SnowflakeIDGenerator } from '../../utils/snowflake.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 import {
   DEFAULT_INDEX_TYPE,
   DEFAULT_LLM_PROVIDER,
@@ -74,7 +75,7 @@ export class MemoryGraph implements GraphStoreBase {
       id: this.idGen.nextId(),
       data,
       filters: { ...filters },
-      createdAt: new Date().toISOString(),
+      createdAt: getCurrentDatetimeIsoformat(),
     };
     this.entries.push(entry);
     return {

@@ -14,6 +14,7 @@ import type {
   VectorStoreSearchMatch,
   VectorStoreListOptions,
 } from '../base.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 export interface PgVectorStoreOptions {
   connectionString?: string;
@@ -210,8 +211,8 @@ export class PgVectorStore implements VectorStore {
         payload.category ?? null,
         getAccessCount(payload),
         JSON.stringify(payload.metadata ?? {}), JSON.stringify(payload),
-        payload.created_at ?? new Date().toISOString(),
-        payload.updated_at ?? new Date().toISOString(),
+        payload.created_at ?? getCurrentDatetimeIsoformat(),
+        payload.updated_at ?? getCurrentDatetimeIsoformat(),
       ]
     );
   }
@@ -258,7 +259,7 @@ export class PgVectorStore implements VectorStore {
         getAccessCount(payload),
         JSON.stringify(payload.metadata ?? {}),
         JSON.stringify(payload),
-        payload.updated_at ?? new Date().toISOString(),
+        payload.updated_at ?? getCurrentDatetimeIsoformat(),
         id,
       ]
     );
