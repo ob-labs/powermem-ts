@@ -22,7 +22,7 @@ describe('provider-factory', () => {
   describe('createEmbeddingsFromEnv', () => {
     it('throws when EMBEDDING_API_KEY is missing', async () => {
       process.env.EMBEDDING_PROVIDER = 'openai';
-      await expect(createEmbeddingsFromEnv()).rejects.toThrow('EMBEDDING_API_KEY');
+      await expect(createEmbeddingsFromEnv()).rejects.toThrow('Embedding API key is required');
     });
 
     it('creates OpenAI embeddings for "openai" provider', async () => {
@@ -58,7 +58,7 @@ describe('provider-factory', () => {
   describe('createLLMFromEnv', () => {
     it('throws when LLM_API_KEY is missing', async () => {
       process.env.LLM_PROVIDER = 'openai';
-      await expect(createLLMFromEnv()).rejects.toThrow('LLM_API_KEY');
+      await expect(createLLMFromEnv()).rejects.toThrow('LLM API key is required');
     });
 
     it('creates ChatOpenAI for "openai" provider', async () => {
