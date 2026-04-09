@@ -18,6 +18,8 @@ export interface SeekDBStoreOptions {
 export class SeekDBStore implements VectorStore {
   private static readonly sharedClients = new Map<string, { client: any; refCount: number }>();
 
+  private static readonly embeddedAdminDatabase = 'test';
+
   private client: any;
 
   private collection: any;
@@ -61,6 +63,50 @@ export class SeekDBStore implements VectorStore {
     return { client, key };
   }
 
+  private static quoteIdentifier(identifier: string): string {
+    return `\`${identifier.replaceAll('`', '``')}\``;
+  }
+
+  /**
+   * Match Python embedded-mode behavior: connect to the default `test` database
+   * first and create the target database lazily when it does not exist yet.
+   */
+  private static async ensureEmbeddedDatabaseExists(dbPath: string, database: string, SeekdbClient: any): Promise<void> {
+    const targetDatabase = database.trim();
+    if (!targetDatabase || targetDatabase === SeekDBStore.embeddedAdminDatabase) {
+      return;
+    }
+
+    const { client, key } = SeekDBStore.acquireClient(
+      dbPath,
+      SeekDBStore.embeddedAdminDatabase,
+      SeekdbClient,
+    );
+
+    try {
+      if (typeof client.execute === 'function') {
+        await client.execute(
+          `CREATE DATABASE IF NOT EXISTS ${SeekDBStore.quoteIdentifier(targetDatabase)}`
+        );
+        return;
+      }
+
+      if (typeof client.listDatabases === 'function' && typeof client.createDatabase === 'function') {
+        const databases = await client.listDatabases();
+        const exists = Array.isArray(databases)
+          && databases.some((entry: { name?: unknown }) => entry?.name === targetDatabase);
+        if (!exists) {
+          await client.createDatabase(targetDatabase);
+        }
+        return;
+      }
+
+      throw new Error('seekdb client does not expose a supported database creation API.');
+    } finally {
+      await SeekDBStore.releaseClient(key);
+    }
+  }
+
   private static async releaseClient(key: string): Promise<void> {
     const entry = SeekDBStore.sharedClients.get(key);
     if (!entry) return;
@@ -99,6 +145,7 @@ export class SeekDBStore implements VectorStore {
     } = await import('seekdb') as any;
 
     const database = options.database ?? 'test';
+    await SeekDBStore.ensureEmbeddedDatabaseExists(options.path, database, SeekdbClient);
     const { client, key } = SeekDBStore.acquireClient(options.path, database, SeekdbClient);
 
     const dimension = options.dimension ?? 768;
