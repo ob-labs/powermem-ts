@@ -6,27 +6,26 @@ import { Router } from 'express';
 import { VERSION } from '../../../powermem/version.js';
 import { getMetricsCollector } from '../../middleware/metrics.js';
 import type { MemoryService } from '../../services/memory_service.js';
+import { createApiResponse, requireService, sendApiError } from '../../utils/http.js';
 
-export function createSystemRouter(memoryService: MemoryService, startTime: number): Router {
+export function createSystemRouter(memoryService: MemoryService | null, startTime: number): Router {
   const router = Router();
 
   router.get('/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok' } });
+    res.json(createApiResponse({ status: 'ok' }));
   });
 
   router.get('/status', (_req, res) => {
+    const service = memoryService;
     const uptime = Math.floor((Date.now() - startTime) / 1000);
-    res.json({
-      success: true,
-      data: {
+    res.json(createApiResponse({
         version: VERSION,
-        storageType: memoryService.getStorageType(),
+        storageType: service?.getStorageType() ?? 'unavailable',
         uptime,
-        status: 'running',
+        status: service ? 'running' : 'degraded',
         nodeVersion: process.version,
         memoryUsage: process.memoryUsage(),
-      },
-    });
+      }));
   });
 
   router.get('/metrics', (_req, res) => {
@@ -37,12 +36,13 @@ export function createSystemRouter(memoryService: MemoryService, startTime: numb
 
   router.delete('/delete-all-memories', async (req, res) => {
     try {
+      const service = requireService(memoryService, 'MemoryService');
       const userId = req.query.user_id as string | undefined;
       const agentId = req.query.agent_id as string | undefined;
-      await memoryService.deleteAll({ userId, agentId });
-      res.json({ success: true, data: { deleted: true } });
+      await service.deleteAll({ userId, agentId });
+      res.json(createApiResponse({ deleted: true }));
     } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
+      sendApiError(res, err);
     }
   });
 

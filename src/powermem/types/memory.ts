@@ -8,7 +8,7 @@ export interface ContentPart {
 
 /** Multimodal message (matches OpenAI/LangChain message format). */
 export interface MessageInput {
-  role: 'user' | 'assistant' | 'system';
+  role: string;
   content: string | ContentPart[];
 }
 

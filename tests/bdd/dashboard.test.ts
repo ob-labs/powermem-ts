@@ -4,21 +4,25 @@
  */
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServerApp } from '../../src/server/main.js';
-import type { Memory } from '../../src/powermem/core/memory.js';
 import { MockEmbeddings } from '../mocks.js';
 
 let server: Server;
-let memory: Memory;
 let baseUrl = '';
+let closeApp: (() => Promise<void>) | undefined;
+let tmpDir = '';
 
 beforeAll(async () => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdd-dashboard-'));
   const appState = await createServerApp({
-    dbPath: ':memory:',
+    dbPath: path.join(tmpDir, 'bdd.db'),
     embeddings: new MockEmbeddings(),
   });
-  memory = appState.memory;
+  closeApp = appState.close;
   server = appState.app.listen(0);
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const { port } = server.address() as AddressInfo;
@@ -29,7 +33,8 @@ afterAll(async () => {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
-  await memory.close();
+  await closeApp?.();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe('BDD: REST API', () => {

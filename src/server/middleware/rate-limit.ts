@@ -4,6 +4,8 @@
  */
 import type { Request, Response, NextFunction } from 'express';
 import type { ServerConfig } from '../config.js';
+import { APIError, ErrorCode } from '../models/errors.js';
+import { createErrorResponse } from '../utils/http.js';
 
 interface WindowEntry {
   timestamps: number[];
@@ -51,11 +53,13 @@ export function createRateLimitMiddleware(config: ServerConfig) {
       const oldest = entry.timestamps[0];
       const retryAfter = Math.ceil((oldest + windowMs - now) / 1000);
       res.set('Retry-After', String(retryAfter));
-      res.status(429).json({
-        success: false,
-        code: 'rate_limit_exceeded',
-        message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
-      });
+      const error = new APIError(
+        ErrorCode.RATE_LIMIT_EXCEEDED,
+        `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
+        { retry_after_seconds: retryAfter },
+        429,
+      );
+      res.status(429).json(createErrorResponse(error));
       return;
     }
 

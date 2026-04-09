@@ -76,9 +76,31 @@ describe('SQLiteUserProfileStore', () => {
     await store.saveProfile('u1', undefined, { food: { fav: 'pizza' } });
     await store.saveProfile('u2', undefined, { work: { role: 'dev' } });
 
-    const foodProfiles = await store.getProfiles({ mainTopic: 'food' });
+    const foodProfiles = await store.getProfiles({ mainTopic: ['food'] });
     expect(foodProfiles.length).toBe(1);
     expect(foodProfiles[0].userId).toBe('u1');
+  });
+
+  it('getProfiles with subTopic and topicValue filters', async () => {
+    await store.saveProfile('u1', undefined, { food: { fav: 'pizza' }, city: { home: 'Hangzhou' } });
+    await store.saveProfile('u2', undefined, { food: { fav: 'salad' }, city: { home: 'Shanghai' } });
+
+    const bySubTopic = await store.getProfiles({ subTopic: ['food.fav'] });
+    expect(bySubTopic.length).toBe(2);
+
+    const byTopicValue = await store.getProfiles({ topicValue: ['pizza'] });
+    expect(byTopicValue.length).toBe(1);
+    expect(byTopicValue[0].userId).toBe('u1');
+    expect(byTopicValue[0].topics).toEqual({ food: { fav: 'pizza' }, city: { home: 'Hangzhou' } });
+  });
+
+  it('getProfiles supports fuzzy user filter', async () => {
+    await store.saveProfile('user-alpha', 'alpha');
+    await store.saveProfile('user-beta', 'beta');
+
+    const fuzzyProfiles = await store.getProfiles({ userId: 'user-', fuzzy: true });
+    expect(fuzzyProfiles.length).toBe(2);
+    expect(await store.countProfiles('user-', true)).toBe(2);
   });
 
   it('deleteProfile removes profile', async () => {

@@ -4,8 +4,10 @@
  */
 import { UserProfileStoreBase } from './base.js';
 import { SQLiteUserProfileStore } from './user-profile-sqlite.js';
+import { SeekDBUserProfileStore } from './user-profile-seekdb.js';
 
 void SQLiteUserProfileStore;
+void SeekDBUserProfileStore;
 
 export class UserProfileStoreFactory {
   static create(providerName: string, config: Record<string, unknown> = {}): UserProfileStoreBase {

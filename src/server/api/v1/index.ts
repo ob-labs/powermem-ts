@@ -10,10 +10,10 @@ import type { UserService } from '../../services/user_service.js';
 import type { AgentService } from '../../services/agent_service.js';
 
 export interface ApiServices {
-  memoryService: MemoryService;
-  searchService: SearchService;
-  userService: UserService;
-  agentService: AgentService;
+  memoryService: MemoryService | null;
+  searchService: SearchService | null;
+  userService: UserService | null;
+  agentService: AgentService | null;
 }
 
 export function createApiRouter(services: ApiServices, startTime: number): Router {

@@ -7,6 +7,7 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { loadEnvFile } from '../utils/env.js';
 import { autoConfig } from '../config_loader.js';
 import { parseMemoryConfig } from '../configs.js';
+import type { MemoryConfig } from '../configs.js';
 import { GraphStoreFactory, VectorStoreFactory } from '../storage/factory.js';
 import { createEmbeddings, createEmbeddingsFromEnv } from '../integrations/embeddings/factory.js';
 import { createLLM, createLLMFromEnv } from '../integrations/llm/factory.js';
@@ -117,6 +118,7 @@ export class Memory extends MemoryBase {
   private readonly llmInstance?: BaseChatModel;
   private readonly idGen = new SnowflakeIDGenerator();
   private readonly config: Config;
+  private readonly runtimeConfig: MemoryConfig;
   private readonly intelligenceManager?: IntelligenceManager;
   private readonly intelligencePlugin?: IntelligencePlugin;
   private readonly graphStore?: GraphStoreBase;
@@ -139,6 +141,7 @@ export class Memory extends MemoryBase {
     auditLogger?: AuditLogger,
     customFactExtractionPrompt?: string,
     customUpdateMemoryPrompt?: string,
+    runtimeConfig?: MemoryConfig,
   ) {
     super();
     this.store = store;
@@ -152,6 +155,7 @@ export class Memory extends MemoryBase {
     this.auditLogger = auditLogger ?? new AuditLogger();
     this.customFactExtractionPrompt = customFactExtractionPrompt;
     this.customUpdateMemoryPrompt = customUpdateMemoryPrompt;
+    this.runtimeConfig = runtimeConfig ?? parseMemoryConfig({});
     this.config = {
       fallbackToSimpleAdd: config?.fallbackToSimpleAdd ?? false,
       reranker: config?.reranker,
@@ -175,6 +179,11 @@ export class Memory extends MemoryBase {
       store = options.store;
     } else if (options.dbPath) {
       ensureParentDir(options.dbPath);
+      config.vectorStore.provider = 'sqlite';
+      config.vectorStore.config = {
+        ...(config.vectorStore.config as Record<string, unknown>),
+        path: options.dbPath,
+      };
       store = new SQLiteStore(options.dbPath);
     } else if (config.vectorStore.provider === 'sqlite') {
       const configuredPath = config.vectorStore.config.path;
@@ -284,6 +293,7 @@ export class Memory extends MemoryBase {
       new AuditLogger(config.audit ?? {}),
       options.customFactExtractionPrompt ?? config.customFactExtractionPrompt ?? undefined,
       options.customUpdateMemoryPrompt ?? config.customUpdateMemoryPrompt ?? undefined,
+      config,
     );
     memory.telemetryManager.captureEvent('memory.init', {
       vectorStore: config.vectorStore.provider,
@@ -946,6 +956,14 @@ export class Memory extends MemoryBase {
   async getUsers(limit = 1000): Promise<string[]> {
     const adapter = new StorageAdapter(this.store);
     return adapter.getUniqueUsers(limit);
+  }
+
+  getLLMInstance(): BaseChatModel | undefined {
+    return this.llmInstance;
+  }
+
+  getRuntimeConfig(): MemoryConfig {
+    return this.runtimeConfig;
   }
 
   async optimize(strategy: string = 'exact', userId?: string, threshold = 0.95): Promise<Record<string, unknown>> {
