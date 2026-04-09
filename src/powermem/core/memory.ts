@@ -521,13 +521,18 @@ export class Memory extends MemoryBase {
   }
 
   private async addInternal(params: AddParams): Promise<AddResult> {
+    const textContent = await this.resolveTextContent(params.content);
+    if (textContent.trim().length === 0) {
+      throw new Error(
+        'Cannot add memory: content is empty. Provide non-whitespace text, or messages that include text (infer=false still requires resolvable text to embed).',
+      );
+    }
     const shouldInfer = params.infer !== false && this.llmInstance != null;
-    return shouldInfer ? this.intelligentAdd(params) : this.simpleAdd(params);
+    return shouldInfer ? this.intelligentAdd(params, textContent) : this.simpleAdd(params, textContent);
   }
 
-  private async simpleAdd(params: AddParams): Promise<AddResult> {
+  private async simpleAdd(params: AddParams, textContent: string): Promise<AddResult> {
     const id = this.idGen.nextId();
-    const textContent = await this.resolveTextContent(params.content);
     const embedding = await this.embedder.embed(textContent);
     const enrichedMetadata = this.intelligencePlugin?.processMetadata
       ? this.intelligencePlugin.processMetadata(textContent, params.metadata ?? {})
@@ -556,11 +561,10 @@ export class Memory extends MemoryBase {
     };
   }
 
-  private async intelligentAdd(params: AddParams): Promise<AddResult> {
-    const textContent = await this.resolveTextContent(params.content);
+  private async intelligentAdd(params: AddParams, textContent: string): Promise<AddResult> {
     const facts = await this.extractFacts(textContent);
     if (facts.length === 0) {
-      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params);
+      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params, textContent);
       return { memories: [], message: 'No memories were created (no facts extracted)' };
     }
 
@@ -645,7 +649,7 @@ export class Memory extends MemoryBase {
     }
 
     if (resultMemories.length === 0 && this.config.fallbackToSimpleAdd) {
-      return this.simpleAdd(params);
+      return this.simpleAdd(params, textContent);
     }
 
     return {
