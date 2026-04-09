@@ -243,13 +243,17 @@ export class SubStorageRouter {
             user_id: rec.userId ?? null,
             agent_id: rec.agentId ?? null,
             run_id: rec.runId ?? null,
+            actor_id: rec.actorId ?? null,
             hash: rec.hash ?? '',
             created_at: rec.createdAt,
             updated_at: rec.updatedAt,
-            scope: rec.scope ?? null,
             category: rec.category ?? null,
-            access_count: rec.accessCount ?? 0,
-            metadata: rec.metadata ?? {},
+            fulltext_content: rec.content,
+            metadata: {
+              ...(rec.metadata ?? {}),
+              ...(rec.scope !== undefined ? { scope: rec.scope } : {}),
+              access_count: rec.accessCount ?? 0,
+            },
           };
 
           await targetStore.insert(rec.id, embedding, payload);

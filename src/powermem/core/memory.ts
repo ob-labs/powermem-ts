@@ -71,6 +71,21 @@ function ensureParentDir(dbPath: string): void {
   }
 }
 
+function asMetadataRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { ...(value as Record<string, unknown>) };
+}
+
+function getMetadataScope(metadata: Record<string, unknown> | undefined): string | undefined {
+  const scope = metadata?.scope;
+  return typeof scope === 'string' && scope.length > 0 ? scope : undefined;
+}
+
+function getMetadataAccessCount(metadata: Record<string, unknown> | undefined): number {
+  const accessCount = metadata?.access_count;
+  return typeof accessCount === 'number' && Number.isFinite(accessCount) ? accessCount : 0;
+}
+
 function toMemoryRecord(rec: VectorStoreRecord): MemoryRecord {
   return {
     id: rec.id,
@@ -79,6 +94,7 @@ function toMemoryRecord(rec: VectorStoreRecord): MemoryRecord {
     userId: rec.userId,
     agentId: rec.agentId,
     runId: rec.runId,
+    actorId: rec.actorId,
     metadata: rec.metadata,
     createdAt: rec.createdAt,
     updatedAt: rec.updatedAt,
@@ -284,9 +300,64 @@ export class Memory extends MemoryBase {
     return this.store;
   }
 
+  private normalizePayloadParams(params: {
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata?: Record<string, unknown>;
+    scope?: string;
+    category?: string;
+  }, accessCount?: number): {
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
+    accessCount: number;
+  } {
+    const metadata = asMetadataRecord(params.metadata);
+
+    let actorId = params.actorId;
+    if (!actorId && typeof metadata.actor_id === 'string') {
+      actorId = metadata.actor_id;
+    }
+    delete metadata.actor_id;
+
+    let category = params.category;
+    if (!category && typeof metadata.category === 'string') {
+      category = metadata.category;
+    }
+    delete metadata.category;
+
+    if (params.scope !== undefined) {
+      metadata.scope = params.scope;
+    }
+
+    const normalizedAccessCount = typeof accessCount === 'number' && Number.isFinite(accessCount)
+      ? accessCount
+      : getMetadataAccessCount(metadata);
+    metadata.access_count = normalizedAccessCount;
+
+    return {
+      userId: params.userId,
+      agentId: params.agentId,
+      runId: params.runId,
+      actorId,
+      metadata,
+      category,
+      accessCount: normalizedAccessCount,
+    };
+  }
+
   private buildPayload(content: string, params: {
-    userId?: string; agentId?: string; runId?: string;
-    metadata?: Record<string, unknown>; scope?: string; category?: string;
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
   }, createdAt?: string): Record<string, unknown> {
     const now = nowISO();
     return {
@@ -294,19 +365,24 @@ export class Memory extends MemoryBase {
       user_id: params.userId ?? null,
       agent_id: params.agentId ?? null,
       run_id: params.runId ?? null,
+      actor_id: params.actorId ?? null,
       hash: md5(content),
       created_at: createdAt ?? now,
       updated_at: now,
-      scope: params.scope ?? null,
       category: params.category ?? null,
-      access_count: 0,
+      fulltext_content: content,
       metadata: params.metadata ?? {},
     };
   }
 
   private buildRecord(id: string, content: string, payload: Record<string, unknown>, params: {
-    userId?: string; agentId?: string; runId?: string;
-    metadata?: Record<string, unknown>; scope?: string; category?: string;
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
+    accessCount?: number;
   }): MemoryRecord {
     return {
       id,
@@ -315,12 +391,13 @@ export class Memory extends MemoryBase {
       userId: params.userId,
       agentId: params.agentId,
       runId: params.runId,
+      actorId: params.actorId,
       metadata: params.metadata,
-      scope: params.scope,
+      scope: getMetadataScope(params.metadata),
       category: params.category,
       createdAt: payload.created_at as string,
       updatedAt: payload.updated_at as string,
-      accessCount: 0,
+      accessCount: params.accessCount ?? getMetadataAccessCount(params.metadata),
     };
   }
 
@@ -449,9 +526,14 @@ export class Memory extends MemoryBase {
       : this.intelligenceManager
         ? this.intelligenceManager.processMetadata(textContent, params.metadata)
         : params.metadata;
-    const enrichedParams = { ...params, metadata: enrichedMetadata };
+    const enrichedParams = this.normalizePayloadParams({ ...params, metadata: enrichedMetadata });
     const payload = this.buildPayload(textContent, enrichedParams);
-    const targetStore = this.resolveStore({ userId: params.userId, agentId: params.agentId, scope: params.scope, metadata: enrichedMetadata });
+    const targetStore = this.resolveStore({
+      userId: params.userId,
+      agentId: params.agentId,
+      scope: params.scope,
+      metadata: enrichedParams.metadata,
+    });
     await targetStore.insert(id, embedding, payload);
     if (this.graphStore) {
       try {
@@ -501,9 +583,10 @@ export class Memory extends MemoryBase {
       for (const fact of facts) {
         const id = this.idGen.nextId();
         const embedding = await this.embedder.embed(fact);
-        const payload = this.buildPayload(fact, params);
+        const normalizedParams = this.normalizePayloadParams(params);
+        const payload = this.buildPayload(fact, normalizedParams);
         await this.store.insert(id, embedding, payload);
-        memories.push(this.buildRecord(id, fact, payload, params));
+        memories.push(this.buildRecord(id, fact, payload, normalizedParams));
       }
       return {
         memories,
@@ -524,18 +607,23 @@ export class Memory extends MemoryBase {
         case 'ADD': {
           const id = this.idGen.nextId();
           const embedding = await this.embedder.embed(action.text);
-          const payload = this.buildPayload(action.text, params);
+          const normalizedParams = this.normalizePayloadParams(params);
+          const payload = this.buildPayload(action.text, normalizedParams);
           await this.store.insert(id, embedding, payload);
-          resultMemories.push(this.buildRecord(id, action.text, payload, params));
+          resultMemories.push(this.buildRecord(id, action.text, payload, normalizedParams));
           break;
         }
         case 'UPDATE': {
           const realId = tempToReal.get(action.id) ?? action.id;
           const existing = await this.store.getById(realId);
           const embedding = await this.embedder.embed(action.text);
-          const payload = this.buildPayload(action.text, params, existing?.createdAt);
+          const normalizedParams = this.normalizePayloadParams({
+            ...params,
+            actorId: existing?.actorId,
+          }, existing?.accessCount);
+          const payload = this.buildPayload(action.text, normalizedParams, existing?.createdAt);
           await this.store.update(realId, embedding, payload);
-          resultMemories.push(this.buildRecord(realId, action.text, payload, params));
+          resultMemories.push(this.buildRecord(realId, action.text, payload, normalizedParams));
           break;
         }
         case 'DELETE': {
@@ -613,7 +701,13 @@ export class Memory extends MemoryBase {
       memoryId: match.id,
       content: match.content,
       score: match.score,
+      userId: match.userId,
+      agentId: match.agentId,
+      runId: match.runId,
+      actorId: match.actorId,
       metadata: match.metadata,
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt,
     }));
 
     if (this.config.reranker) {
@@ -644,19 +738,17 @@ export class Memory extends MemoryBase {
       embedding = await this.embedder.embed(content);
     }
 
-    const payload: Record<string, unknown> = {
-      data: content,
-      user_id: existing.userId ?? null,
-      agent_id: existing.agentId ?? null,
-      run_id: existing.runId ?? null,
-      hash: md5(content),
-      created_at: existing.createdAt,
-      updated_at: nowISO(),
-      scope: existing.scope ?? null,
-      category: existing.category ?? null,
-      access_count: existing.accessCount ?? 0,
-      metadata: metadata ?? {},
-    };
+    const normalizedParams = this.normalizePayloadParams({
+      userId: existing.userId,
+      agentId: existing.agentId,
+      runId: existing.runId,
+      actorId: existing.actorId,
+      metadata,
+      scope: existing.scope,
+      category: existing.category,
+    }, existing.accessCount);
+    const payload = this.buildPayload(content, normalizedParams, existing.createdAt);
+    payload.updated_at = nowISO();
 
     await this.store.update(memoryId, embedding, payload);
 
@@ -667,12 +759,13 @@ export class Memory extends MemoryBase {
       userId: existing.userId,
       agentId: existing.agentId,
       runId: existing.runId,
-      metadata,
-      scope: existing.scope,
-      category: existing.category,
+      actorId: existing.actorId,
+      metadata: normalizedParams.metadata,
+      scope: getMetadataScope(normalizedParams.metadata),
+      category: normalizedParams.category,
       createdAt: existing.createdAt,
       updatedAt: payload.updated_at as string,
-      accessCount: existing.accessCount,
+      accessCount: normalizedParams.accessCount,
     };
   }
 

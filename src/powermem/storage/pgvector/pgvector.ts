@@ -27,6 +27,39 @@ export interface PgVectorStoreOptions {
   sslmode?: string;
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getUserMetadata(payload: Record<string, unknown>): Record<string, unknown> {
+  const metadata = payload.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  return metadata as Record<string, unknown>;
+}
+
+function getScope(payload: Record<string, unknown>): string | undefined {
+  const scope = getUserMetadata(payload).scope;
+  return typeof scope === 'string' && scope.length > 0 ? scope : undefined;
+}
+
+function getAccessCount(payload: Record<string, unknown>): number {
+  const accessCount = getUserMetadata(payload).access_count;
+  return typeof accessCount === 'number' && Number.isFinite(accessCount)
+    ? accessCount
+    : ((payload.access_count as number) ?? 0);
+}
+
 export class PgVectorStore implements VectorStore {
   private pool: any; // pg.Pool — dynamically imported
   private readonly tableName: string;
@@ -83,6 +116,7 @@ export class PgVectorStore implements VectorStore {
         user_id TEXT,
         agent_id TEXT,
         run_id TEXT,
+        actor_id TEXT,
         hash TEXT,
         scope TEXT,
         category TEXT,
@@ -115,6 +149,7 @@ export class PgVectorStore implements VectorStore {
     if (filters.userId) { conditions.push(`user_id = $${idx++}`); params.push(filters.userId); }
     if (filters.agentId) { conditions.push(`agent_id = $${idx++}`); params.push(filters.agentId); }
     if (filters.runId) { conditions.push(`run_id = $${idx++}`); params.push(filters.runId); }
+    if (filters.actorId) { conditions.push(`actor_id = $${idx++}`); params.push(filters.actorId); }
     if (filters.scope) { conditions.push(`scope = $${idx++}`); params.push(filters.scope); }
     if (filters.category) { conditions.push(`category = $${idx++}`); params.push(filters.category); }
 
@@ -126,20 +161,23 @@ export class PgVectorStore implements VectorStore {
   }
 
   private rowToRecord(row: any): VectorStoreRecord {
+    const payload = parseJsonObject(row.payload);
+    const metadata = parseJsonObject(row.metadata);
     return {
       id: row.id,
       content: row.content ?? '',
       userId: row.user_id ?? undefined,
       agentId: row.agent_id ?? undefined,
       runId: row.run_id ?? undefined,
+      actorId: row.actor_id ?? (payload.actor_id as string | undefined),
       hash: row.hash ?? undefined,
-      metadata: row.metadata ?? {},
+      metadata: Object.keys(metadata).length > 0 ? metadata : (payload.metadata as Record<string, unknown> | undefined) ?? {},
       embedding: row.embedding ? JSON.parse(`[${row.embedding.slice(1, -1)}]`) : undefined,
       createdAt: row.created_at?.toISOString?.() ?? row.created_at,
       updatedAt: row.updated_at?.toISOString?.() ?? row.updated_at,
-      scope: row.scope ?? undefined,
+      scope: row.scope ?? getScope(payload),
       category: row.category ?? undefined,
-      accessCount: row.access_count ?? 0,
+      accessCount: row.access_count ?? getAccessCount(payload),
     };
   }
 
@@ -147,16 +185,33 @@ export class PgVectorStore implements VectorStore {
     await this.init();
     const vecStr = `[${vector.join(',')}]`;
     await this.pool.query(
-      `INSERT INTO ${this.tableName} (id, embedding, content, user_id, agent_id, run_id, hash, scope, category, access_count, metadata, payload, created_at, updated_at)
-       VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       ON CONFLICT (id) DO UPDATE SET embedding = $2::vector, content = $3, payload = $12, updated_at = $14`,
+      `INSERT INTO ${this.tableName} (id, embedding, content, user_id, agent_id, run_id, actor_id, hash, scope, category, access_count, metadata, payload, created_at, updated_at)
+       VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       ON CONFLICT (id) DO UPDATE SET
+         embedding = $2::vector,
+         content = $3,
+         user_id = $4,
+         agent_id = $5,
+         run_id = $6,
+         actor_id = $7,
+         hash = $8,
+         scope = $9,
+         category = $10,
+         access_count = $11,
+         metadata = $12,
+         payload = $13,
+         created_at = $14,
+         updated_at = $15`,
       [
         id, vecStr,
         payload.data ?? '', payload.user_id ?? null, payload.agent_id ?? null,
-        payload.run_id ?? null, payload.hash ?? null, payload.scope ?? null,
-        payload.category ?? null, payload.access_count ?? 0,
+        payload.run_id ?? null, payload.actor_id ?? null, payload.hash ?? null,
+        ((payload.metadata as Record<string, unknown> | undefined)?.scope as string | undefined) ?? null,
+        payload.category ?? null,
+        getAccessCount(payload),
         JSON.stringify(payload.metadata ?? {}), JSON.stringify(payload),
-        payload.created_at ?? new Date().toISOString(), payload.updated_at ?? new Date().toISOString(),
+        payload.created_at ?? new Date().toISOString(),
+        payload.updated_at ?? new Date().toISOString(),
       ]
     );
   }
@@ -175,8 +230,37 @@ export class PgVectorStore implements VectorStore {
     await this.init();
     const vecStr = `[${vector.join(',')}]`;
     await this.pool.query(
-      `UPDATE ${this.tableName} SET embedding = $1::vector, content = $2, payload = $3, updated_at = $4 WHERE id = $5`,
-      [vecStr, payload.data ?? '', JSON.stringify(payload), payload.updated_at ?? new Date().toISOString(), id]
+      `UPDATE ${this.tableName}
+       SET embedding = $1::vector,
+           content = $2,
+           user_id = $3,
+           agent_id = $4,
+           run_id = $5,
+           actor_id = $6,
+           hash = $7,
+           scope = $8,
+           category = $9,
+           access_count = $10,
+           metadata = $11,
+           payload = $12,
+           updated_at = $13
+       WHERE id = $14`,
+      [
+        vecStr,
+        payload.data ?? '',
+        payload.user_id ?? null,
+        payload.agent_id ?? null,
+        payload.run_id ?? null,
+        payload.actor_id ?? null,
+        payload.hash ?? null,
+        ((payload.metadata as Record<string, unknown> | undefined)?.scope as string | undefined) ?? null,
+        payload.category ?? null,
+        getAccessCount(payload),
+        JSON.stringify(payload.metadata ?? {}),
+        JSON.stringify(payload),
+        payload.updated_at ?? new Date().toISOString(),
+        id,
+      ]
     );
   }
 
@@ -212,7 +296,7 @@ export class PgVectorStore implements VectorStore {
 
     // pgvector cosine distance: 1 - (a <=> b) gives similarity
     const { rows } = await this.pool.query(
-      `SELECT id, content, metadata, created_at, updated_at, access_count,
+      `SELECT id, content, user_id, agent_id, run_id, actor_id, category, scope, metadata, payload, created_at, updated_at, access_count,
               1 - (embedding <=> $${paramIdx}::vector) AS score
        FROM ${this.tableName}${clause.length > 0 ? clause + ' AND' : ' WHERE'} embedding IS NOT NULL
        ORDER BY embedding <=> $${paramIdx}::vector
@@ -220,15 +304,25 @@ export class PgVectorStore implements VectorStore {
       [...params, vecStr, limit]
     );
 
-    return rows.map((r: any) => ({
-      id: r.id,
-      content: r.content ?? '',
-      score: parseFloat(r.score),
-      metadata: r.metadata ?? undefined,
-      createdAt: r.created_at?.toISOString?.() ?? r.created_at,
-      updatedAt: r.updated_at?.toISOString?.() ?? r.updated_at,
-      accessCount: r.access_count ?? 0,
-    }));
+    return rows.map((r: any) => {
+      const payload = parseJsonObject(r.payload);
+      const metadata = parseJsonObject(r.metadata);
+      return {
+        id: r.id,
+        content: r.content ?? '',
+        score: parseFloat(r.score),
+        userId: r.user_id ?? undefined,
+        agentId: r.agent_id ?? undefined,
+        runId: r.run_id ?? undefined,
+        actorId: r.actor_id ?? undefined,
+        metadata: Object.keys(metadata).length > 0 ? metadata : (payload.metadata as Record<string, unknown> | undefined),
+        createdAt: r.created_at?.toISOString?.() ?? r.created_at,
+        updatedAt: r.updated_at?.toISOString?.() ?? r.updated_at,
+        scope: r.scope ?? getScope(payload),
+        category: r.category ?? undefined,
+        accessCount: r.access_count ?? getAccessCount(payload),
+      };
+    });
   }
 
   async count(filters: VectorStoreFilter = {}): Promise<number> {
@@ -240,14 +334,48 @@ export class PgVectorStore implements VectorStore {
 
   async incrementAccessCount(id: string): Promise<void> {
     await this.init();
-    await this.pool.query(`UPDATE ${this.tableName} SET access_count = access_count + 1 WHERE id = $1`, [id]);
+    await this.pool.query(
+      `UPDATE ${this.tableName}
+       SET access_count = access_count + 1,
+           metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{access_count}',
+             to_jsonb(COALESCE((metadata->>'access_count')::integer, 0) + 1),
+             true
+           ),
+           payload = jsonb_set(
+             COALESCE(payload, '{}'::jsonb),
+             '{metadata,access_count}',
+             to_jsonb(COALESCE((payload->'metadata'->>'access_count')::integer, 0) + 1),
+             true
+           )
+       WHERE id = $1`,
+      [id],
+    );
   }
 
   async incrementAccessCountBatch(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     await this.init();
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
-    await this.pool.query(`UPDATE ${this.tableName} SET access_count = access_count + 1 WHERE id IN (${placeholders})`, ids);
+    await this.pool.query(
+      `UPDATE ${this.tableName}
+       SET access_count = access_count + 1,
+           metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{access_count}',
+             to_jsonb(COALESCE((metadata->>'access_count')::integer, 0) + 1),
+             true
+           ),
+           payload = jsonb_set(
+             COALESCE(payload, '{}'::jsonb),
+             '{metadata,access_count}',
+             to_jsonb(COALESCE((payload->'metadata'->>'access_count')::integer, 0) + 1),
+             true
+           )
+       WHERE id IN (${placeholders})`,
+      ids,
+    );
   }
 
   async removeAll(filters: VectorStoreFilter = {}): Promise<void> {

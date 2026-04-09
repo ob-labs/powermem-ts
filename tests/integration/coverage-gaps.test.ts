@@ -174,7 +174,7 @@ describe('Memory edge cases', () => {
     expect(embeddings.calls.length).toBe(callsBefore);
 
     const mem = await provider.get(id);
-    expect(mem!.metadata).toEqual({ key: 'value' });
+    expect(mem!.metadata).toEqual({ key: 'value', access_count: 0 });
   });
 
   it('create falls back gracefully when LLM env is not configured', async () => {
