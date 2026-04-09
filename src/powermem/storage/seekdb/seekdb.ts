@@ -222,6 +222,8 @@ export class SeekDBStore implements VectorStore {
   }
 
   private serializePayloadMetadata(payload: Record<string, unknown>): string {
+    // Mirror Python OceanBase behavior: the text body lives in the document/fulltext
+    // column, while JSON metadata only stores structured fields.
     return JSON.stringify({
       user_id: (payload.user_id as string) ?? '',
       agent_id: (payload.agent_id as string) ?? '',
@@ -231,7 +233,6 @@ export class SeekDBStore implements VectorStore {
       created_at: (payload.created_at as string) ?? '',
       updated_at: (payload.updated_at as string) ?? '',
       category: (payload.category as string) ?? '',
-      fulltext_content: (payload.fulltext_content as string) ?? (payload.data as string) ?? '',
       metadata: this.normalizeUserMetadata(payload.metadata),
     });
   }
