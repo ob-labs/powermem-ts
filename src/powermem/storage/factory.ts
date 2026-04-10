@@ -107,7 +107,7 @@ VectorStoreFactory.register('oceanbase', async (config) => {
   const host = (config.host as string | undefined) ?? '';
   if (host) {
     throw new Error(
-      'powermem-ts currently supports OceanBase vector storage only in embedded mode. ' +
+      'powermem currently supports OceanBase vector storage only in embedded mode. ' +
       'Leave OCEANBASE_HOST empty to use OCEANBASE_PATH-backed storage.'
     );
   }

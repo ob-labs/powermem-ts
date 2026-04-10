@@ -316,7 +316,7 @@ describe('loadConfigFromEnv', () => {
   });
 
   it('loads POWERMEM_ENV_FILE before default env discovery', () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'powermem-ts-config-'));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'powermem-config-'));
     const defaultEnvPath = path.join(tempDir, 'default.env');
     const envPath = path.join(tempDir, 'custom.env');
     fs.writeFileSync(defaultEnvPath, 'DASHSCOPE_API_KEY=from-default-env\n', 'utf8');

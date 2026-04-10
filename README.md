@@ -8,7 +8,7 @@ TypeScript version of [PowerMem](https://github.com/oceanbase/powermem), powered
 ## Install
 
 ```bash
-npm install powermem-ts
+npm install powermem
 ```
 
 ## Configuration
@@ -37,7 +37,7 @@ SEEKDB_DIMENSION=1536
 ## Usage
 
 ```typescript
-import { Memory } from 'powermem-ts';
+import { Memory } from 'powermem';
 
 const memory = await Memory.create(); // auto-loads .env
 
