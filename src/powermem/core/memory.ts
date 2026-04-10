@@ -520,15 +520,56 @@ export class Memory extends MemoryBase {
     }
   }
 
-  private async addInternal(params: AddParams): Promise<AddResult> {
+  /**
+   * Matches Python `Memory.add`: `use_infer = infer and isinstance(messages, list) and len(messages) > 0`
+   * after str is normalized to a one-element message list.
+   */
+  private usesIntelligentAddRoute(params: AddParams): boolean {
+    return (
+      params.infer !== false &&
+      (typeof params.content === 'string' ||
+        (Array.isArray(params.content) && params.content.length > 0))
+    );
+  }
+
+  /**
+   * Without an LLM, default infer still uses simple add for non-empty content (see coverage-gaps test).
+   * Empty content on the intelligent *route* (Python `use_infer`) returns [] without calling the LLM.
+   */
+  private async addInternal(params: AddParams): Promise<{
+    result: AddResult;
+    auditIntelligentPath: boolean;
+  }> {
     const textContent = await this.resolveTextContent(params.content);
-    if (textContent.trim().length === 0) {
+    const onIntelligentRoute = this.usesIntelligentAddRoute(params);
+
+    if (textContent.trim().length === 0 && !onIntelligentRoute) {
       throw new Error(
         'Cannot add memory: content is empty. Provide non-whitespace text, or messages that include text (infer=false still requires resolvable text to embed).',
       );
     }
-    const shouldInfer = params.infer !== false && this.llmInstance != null;
-    return shouldInfer ? this.intelligentAdd(params, textContent) : this.simpleAdd(params, textContent);
+
+    if (onIntelligentRoute && this.llmInstance) {
+      const result = await this.intelligentAdd(params, textContent);
+      return { result, auditIntelligentPath: true };
+    }
+
+    if (onIntelligentRoute && textContent.trim().length === 0) {
+      if (this.config.fallbackToSimpleAdd) {
+        const result = await this.simpleAdd(params, textContent);
+        return { result, auditIntelligentPath: false };
+      }
+      return {
+        result: {
+          memories: [],
+          message: 'No memories were created (no facts extracted)',
+        },
+        auditIntelligentPath: true,
+      };
+    }
+
+    const result = await this.simpleAdd(params, textContent);
+    return { result, auditIntelligentPath: false };
   }
 
   private async simpleAdd(params: AddParams, textContent: string): Promise<AddResult> {
@@ -562,6 +603,11 @@ export class Memory extends MemoryBase {
   }
 
   private async intelligentAdd(params: AddParams, textContent: string): Promise<AddResult> {
+    if (textContent.trim().length === 0) {
+      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params, textContent);
+      return { memories: [], message: 'No memories were created (no facts extracted)' };
+    }
+
     const facts = await this.extractFacts(textContent);
     if (facts.length === 0) {
       if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params, textContent);
@@ -793,16 +839,16 @@ export class Memory extends MemoryBase {
         : contentOrParams
     );
     try {
-      const result = await this.addInternal(params);
+      const { result, auditIntelligentPath } = await this.addInternal(params);
       this.logAuditEvent(
-        params.infer !== false && this.llmInstance ? 'memory.intelligent_add' : 'memory.add',
+        auditIntelligentPath ? 'memory.intelligent_add' : 'memory.add',
         { createdCount: result.memories.length },
         params.userId,
         params.agentId,
       );
       this.captureTelemetryEvent(
         'memory.add',
-        { createdCount: result.memories.length, infer: params.infer !== false },
+        { createdCount: result.memories.length, infer: auditIntelligentPath },
         params.userId,
         params.agentId,
       );
