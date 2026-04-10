@@ -53,7 +53,7 @@ export class TelemetryManager {
       userId,
       agentId,
       timestamp: getCurrentDatetimeIsoformat(),
-      version: '0.3.0',
+      version: '0.1.0',
     });
     if (this.events.length >= this.batchSize) {
       void this.flush();
