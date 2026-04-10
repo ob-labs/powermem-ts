@@ -29,8 +29,14 @@ let seekdbAvailable = false;
   try {
     const s = await tryCreateStore(dir, 'check');
     seekdbAvailable = s != null;
-    // Don't call close() — SeekDB embedded may SIGABRT on cleanup
-  } finally {
+    // Don't call close() — SeekDB embedded may SIGABRT on cleanup.
+    // Defer directory removal to process exit so the native engine is no longer
+    // accessing the files when we delete them (avoids VsagException / SIGABRT).
+    process.on('exit', () => {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    });
+  } catch {
+    // If creation itself threw, safe to remove immediately
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   }
 }

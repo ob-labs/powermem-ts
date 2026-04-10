@@ -29,7 +29,12 @@ let seekdbAvailable = false;
   try {
     const s = await tryCreateStore(dir, 'check');
     seekdbAvailable = s != null;
-  } finally {
+    // Defer directory removal to process exit so the native engine is no longer
+    // accessing the files when we delete them (avoids VsagException / SIGABRT).
+    process.on('exit', () => {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    });
+  } catch {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   }
 }
