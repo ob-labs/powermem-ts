@@ -4,6 +4,22 @@
  */
 import type { MemoryContent, ContentPart } from '../types/memory.js';
 
+function normalizeTextParts(content: string | ContentPart[]): string[] {
+  if (typeof content === 'string') return [content];
+
+  const parts: string[] = [];
+  for (const part of content) {
+    if (part.type === 'text' && part.text) {
+      parts.push(part.text);
+    } else if (part.type === 'image_url') {
+      parts.push('[image]');
+    } else if (part.type === 'audio') {
+      parts.push('[audio]');
+    }
+  }
+  return parts;
+}
+
 /**
  * Extract plain text from MemoryContent (string or messages array).
  * For multimodal messages, concatenates all text parts.
@@ -15,21 +31,49 @@ export function extractTextFromContent(content: MemoryContent): string {
 
   const parts: string[] = [];
   for (const msg of content) {
-    if (typeof msg.content === 'string') {
-      parts.push(msg.content);
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part.type === 'text' && part.text) {
-          parts.push(part.text);
-        } else if (part.type === 'image_url') {
-          parts.push('[image]');
-        } else if (part.type === 'audio') {
-          parts.push('[audio]');
-        }
-      }
-    }
+    parts.push(...normalizeTextParts(msg.content));
   }
   return parts.join('\n');
+}
+
+export function extractTextFromMessageContent(content: string | ContentPart[]): string {
+  return normalizeTextParts(content).join('\n');
+}
+
+export function parseConversationText(content: MemoryContent): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((message) => {
+      const role = typeof message.role === 'string' && message.role.trim().length > 0
+        ? message.role
+        : 'user';
+      const text = extractTextFromMessageContent(message.content).trim();
+      return text ? `${role}: ${text}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function filterMessagesByRoles(
+  content: MemoryContent,
+  includeRoles?: string[] | null,
+  excludeRoles?: string[] | null,
+): MemoryContent {
+  if (typeof content === 'string') return content;
+
+  const normalizedInclude = includeRoles?.filter((role) => typeof role === 'string' && role.trim().length > 0);
+  const normalizedExclude = excludeRoles?.filter((role) => typeof role === 'string' && role.trim().length > 0);
+
+  return content.filter((message) => {
+    const role = typeof message.role === 'string' ? message.role : '';
+    if (normalizedInclude && normalizedInclude.length > 0 && !normalizedInclude.includes(role)) {
+      return false;
+    }
+    if (normalizedExclude && normalizedExclude.length > 0 && normalizedExclude.includes(role)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /**

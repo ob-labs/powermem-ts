@@ -17,6 +17,24 @@ const SORTABLE_FIELDS = new Set([
   'id', 'created_at', 'updated_at', 'data', 'access_count', 'category', 'scope',
 ]);
 
+function getUserMetadata(payload: Record<string, unknown>): Record<string, unknown> {
+  const metadata = payload.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  return metadata as Record<string, unknown>;
+}
+
+function getScope(payload: Record<string, unknown>): string | undefined {
+  const nested = getUserMetadata(payload).scope;
+  if (typeof nested === 'string' && nested.length > 0) return nested;
+  return payload.scope as string | undefined;
+}
+
+function getAccessCount(payload: Record<string, unknown>): number {
+  const nested = getUserMetadata(payload).access_count;
+  if (typeof nested === 'number' && Number.isFinite(nested)) return nested;
+  return (payload.access_count as number) ?? 0;
+}
+
 export class SQLiteStore implements VectorStore {
   private db: Database.Database;
 
@@ -70,9 +88,10 @@ export class SQLiteStore implements VectorStore {
       embedding: vector,
       createdAt: (payload.created_at as string) ?? row.created_at,
       updatedAt: (payload.updated_at as string) ?? row.created_at,
-      scope: payload.scope as string | undefined,
+      actorId: payload.actor_id as string | undefined,
+      scope: getScope(payload),
       category: payload.category as string | undefined,
-      accessCount: (payload.access_count as number) ?? 0,
+      accessCount: getAccessCount(payload),
     };
   }
 
@@ -134,6 +153,10 @@ export class SQLiteStore implements VectorStore {
       const direction = options.order === 'asc' ? 'ASC' : 'DESC';
       if (options.sortBy === 'id') {
         orderClause = `ORDER BY id ${direction}`;
+      } else if (options.sortBy === 'scope') {
+        orderClause = `ORDER BY json_extract(payload, '$.metadata.scope') ${direction}`;
+      } else if (options.sortBy === 'access_count') {
+        orderClause = `ORDER BY COALESCE(json_extract(payload, '$.metadata.access_count'), json_extract(payload, '$.access_count')) ${direction}`;
       } else if (SORTABLE_FIELDS.has(options.sortBy)) {
         orderClause = `ORDER BY json_extract(payload, '$.${options.sortBy}') ${direction}`;
       }
@@ -169,9 +192,15 @@ export class SQLiteStore implements VectorStore {
         content: (payload.data as string) ?? '',
         score,
         metadata: payload.metadata as Record<string, unknown> | undefined,
+        userId: payload.user_id as string | undefined,
+        agentId: payload.agent_id as string | undefined,
+        runId: payload.run_id as string | undefined,
+        actorId: payload.actor_id as string | undefined,
         createdAt: payload.created_at as string | undefined,
         updatedAt: payload.updated_at as string | undefined,
-        accessCount: (payload.access_count as number) ?? 0,
+        scope: getScope(payload),
+        category: payload.category as string | undefined,
+        accessCount: getAccessCount(payload),
       });
     }
 
@@ -264,9 +293,15 @@ export class SQLiteStore implements VectorStore {
             content: (payload.data as string) ?? '',
             score: ftsScore * textWeight,
             metadata: payload.metadata as Record<string, unknown> | undefined,
+            userId: payload.user_id as string | undefined,
+            agentId: payload.agent_id as string | undefined,
+            runId: payload.run_id as string | undefined,
+            actorId: payload.actor_id as string | undefined,
             createdAt: payload.created_at as string | undefined,
             updatedAt: payload.updated_at as string | undefined,
-            accessCount: (payload.access_count as number) ?? 0,
+            scope: getScope(payload),
+            category: payload.category as string | undefined,
+            accessCount: getAccessCount(payload),
           });
         }
       }
@@ -288,8 +323,8 @@ export class SQLiteStore implements VectorStore {
   async incrementAccessCount(id: string): Promise<void> {
     this.db.prepare(`
       UPDATE memories
-      SET payload = json_set(payload, '$.access_count',
-        COALESCE(json_extract(payload, '$.access_count'), 0) + 1
+      SET payload = json_set(payload, '$.metadata.access_count',
+        COALESCE(json_extract(payload, '$.metadata.access_count'), json_extract(payload, '$.access_count'), 0) + 1
       )
       WHERE id = ?
     `).run(id);
@@ -300,8 +335,8 @@ export class SQLiteStore implements VectorStore {
     const placeholders = ids.map(() => '?').join(',');
     this.db.prepare(`
       UPDATE memories
-      SET payload = json_set(payload, '$.access_count',
-        COALESCE(json_extract(payload, '$.access_count'), 0) + 1
+      SET payload = json_set(payload, '$.metadata.access_count',
+        COALESCE(json_extract(payload, '$.metadata.access_count'), json_extract(payload, '$.access_count'), 0) + 1
       )
       WHERE id IN (${placeholders})
     `).run(...ids);
@@ -345,7 +380,7 @@ export class SQLiteStore implements VectorStore {
       params.push(filters.runId);
     }
     if (filters.scope) {
-      conditions.push("json_extract(payload, '$.scope') = ?");
+      conditions.push("json_extract(payload, '$.metadata.scope') = ?");
       params.push(filters.scope);
     }
     if (filters.category) {

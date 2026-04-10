@@ -56,15 +56,17 @@ export abstract class UserProfileStoreBase {
 
   abstract getProfiles(options?: {
     userId?: string;
-    mainTopic?: string;
-    subTopic?: string;
+    fuzzy?: boolean;
+    mainTopic?: string[];
+    subTopic?: string[];
+    topicValue?: string[];
     limit?: number;
     offset?: number;
   }): Promise<UserProfile[]>;
 
   abstract deleteProfile(profileId: string): Promise<boolean>;
 
-  abstract countProfiles(userId?: string): Promise<number>;
+  abstract countProfiles(userId?: string, fuzzy?: boolean): Promise<number>;
 
   abstract close(): Promise<void>;
 }

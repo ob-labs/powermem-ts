@@ -1,10 +1,11 @@
 /**
  * LLM prompt templates — exact copies from Python powermem.
  */
+import { getCurrentDatetimeIsoformat } from '../utils/payload-datetime.js';
 
 export function getFactRetrievalPrompt(customPrompt?: string): string {
   if (customPrompt) return customPrompt;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDatetimeIsoformat().slice(0, 10);
   return `You are a Personal Information Organizer. Extract relevant facts, memories, preferences, intentions, and needs from conversations into distinct, manageable facts.
 
 Information Types: Personal preferences, details (names, relationships, dates), plans, intentions, needs, requests, activities, health/wellness (including medical appointments, symptoms, treatments), professional, miscellaneous.

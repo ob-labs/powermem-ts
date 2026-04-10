@@ -2,8 +2,18 @@
 import type { Embeddings } from '@langchain/core/embeddings';
 import { createServerApp } from '../main.js';
 import { loadServerConfig } from '../config.js';
+import { autoConfig } from '../../powermem/config_loader.js';
+import { isEmbeddedStorage } from './embedded-storage.js';
 
 const config = loadServerConfig();
+const memoryConfig = autoConfig();
+
+if (!config.reload && config.workers !== 1 && isEmbeddedStorage(memoryConfig)) {
+  console.error(
+    `[server] Embedded storage detected (SQLite or SeekDB without host). Forcing workers=1 (was ${config.workers}).`,
+  );
+  config.workers = 1;
+}
 
 let embeddings: Embeddings | undefined;
 try {
@@ -18,7 +28,12 @@ try {
   embeddings = new DemoEmbeddings({});
 }
 
-createServerApp({ dbPath: process.env.DB_PATH, embeddings }).then(({ app }) => {
+createServerApp({
+  dbPath: process.env.DB_PATH,
+  embeddings,
+  memoryConfig,
+  config,
+}).then(({ app }) => {
   app.listen(config.port, config.host, () => {
     console.log(`PowerMem API server running at http://${config.host}:${config.port}/`);
     console.log(`API at http://${config.host}:${config.port}/api/v1/`);

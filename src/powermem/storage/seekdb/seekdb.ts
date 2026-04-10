@@ -6,14 +6,7 @@ import type {
   VectorStoreListOptions,
 } from '../base.js';
 import path from 'node:path';
-import {
-  BM25SparseEmbedder,
-  CHINESE_STOPWORDS,
-  ENGLISH_STOPWORDS,
-  sparseDotProduct,
-  tokenizeCJK,
-  type SparseEmbedder,
-} from '../../integrations/embeddings/sparse.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 export interface SeekDBStoreOptions {
   path: string;
@@ -21,41 +14,37 @@ export interface SeekDBStoreOptions {
   collectionName?: string;
   distance?: 'cosine' | 'l2' | 'inner_product';
   dimension?: number;
-  includeSparse?: boolean;
-  sparseEmbedder?: SparseEmbedder;
 }
 
 export class SeekDBStore implements VectorStore {
   private static readonly sharedClients = new Map<string, { client: any; refCount: number }>();
 
+  private static readonly embeddedAdminDatabase = 'test';
+
   private client: any;
 
   private collection: any;
 
+  private tableName: string;
+
   private readonly distanceMetric: 'cosine' | 'l2' | 'inner_product';
 
   private readonly clientKey: string;
-
-  private readonly includeSparse: boolean;
-
-  private readonly sparseEmbedder?: SparseEmbedder;
 
   private isClosed = false;
 
   private constructor(
     client: any,
     collection: any,
+    tableName: string,
     distanceMetric: 'cosine' | 'l2' | 'inner_product',
     clientKey: string,
-    includeSparse: boolean,
-    sparseEmbedder?: SparseEmbedder,
   ) {
     this.client = client;
     this.collection = collection;
+    this.tableName = tableName;
     this.distanceMetric = distanceMetric;
     this.clientKey = clientKey;
-    this.includeSparse = includeSparse;
-    this.sparseEmbedder = sparseEmbedder;
   }
 
   private static buildClientKey(dbPath: string, database: string): string {
@@ -73,6 +62,50 @@ export class SeekDBStore implements VectorStore {
     const client = new SeekdbClient({ path: dbPath, database });
     SeekDBStore.sharedClients.set(key, { client, refCount: 1 });
     return { client, key };
+  }
+
+  private static quoteIdentifier(identifier: string): string {
+    return `\`${identifier.replaceAll('`', '``')}\``;
+  }
+
+  /**
+   * Match Python embedded-mode behavior: connect to the default `test` database
+   * first and create the target database lazily when it does not exist yet.
+   */
+  private static async ensureEmbeddedDatabaseExists(dbPath: string, database: string, SeekdbClient: any): Promise<void> {
+    const targetDatabase = database.trim();
+    if (!targetDatabase || targetDatabase === SeekDBStore.embeddedAdminDatabase) {
+      return;
+    }
+
+    const { client, key } = SeekDBStore.acquireClient(
+      dbPath,
+      SeekDBStore.embeddedAdminDatabase,
+      SeekdbClient,
+    );
+
+    try {
+      if (typeof client.execute === 'function') {
+        await client.execute(
+          `CREATE DATABASE IF NOT EXISTS ${SeekDBStore.quoteIdentifier(targetDatabase)}`
+        );
+        return;
+      }
+
+      if (typeof client.listDatabases === 'function' && typeof client.createDatabase === 'function') {
+        const databases = await client.listDatabases();
+        const exists = Array.isArray(databases)
+          && databases.some((entry: { name?: unknown }) => entry?.name === targetDatabase);
+        if (!exists) {
+          await client.createDatabase(targetDatabase);
+        }
+        return;
+      }
+
+      throw new Error('seekdb client does not expose a supported database creation API.');
+    } finally {
+      await SeekDBStore.releaseClient(key);
+    }
   }
 
   private static async releaseClient(key: string): Promise<void> {
@@ -104,9 +137,16 @@ export class SeekDBStore implements VectorStore {
   }
 
   static async create(options: SeekDBStoreOptions): Promise<SeekDBStore> {
-    const { SeekdbClient, Schema, VectorIndexConfig } = await import('seekdb');
+    const {
+      SeekdbClient,
+      Schema,
+      VectorIndexConfig,
+      FulltextIndexConfig,
+      SparseVectorIndexConfig,
+    } = await import('seekdb') as any;
 
     const database = options.database ?? 'test';
+    await SeekDBStore.ensureEmbeddedDatabaseExists(options.path, database, SeekdbClient);
     const { client, key } = SeekDBStore.acquireClient(options.path, database, SeekdbClient);
 
     const dimension = options.dimension ?? 768;
@@ -114,9 +154,14 @@ export class SeekDBStore implements VectorStore {
 
     try {
       const schema = new Schema({
+        fulltextIndex: new FulltextIndexConfig(),
         vectorIndex: new VectorIndexConfig({
           hnsw: { dimension, distance },
           embeddingFunction: null, // We pass pre-computed embeddings, no auto-vectorization
+        }),
+        sparseVectorIndex: new SparseVectorIndexConfig({
+          distance: 'inner_product',
+          type: 'sindi',
         }),
       });
 
@@ -124,14 +169,17 @@ export class SeekDBStore implements VectorStore {
         name: options.collectionName ?? 'power_mem',
         schema,
       });
+      const collectionId = collection?.collectionId as string | undefined;
+      if (!collectionId) {
+        throw new Error('seekdb collection did not expose collectionId for SQL-backed operations.');
+      }
 
       return new SeekDBStore(
         client,
         collection,
+        `c$v2$${collectionId}`,
         distance,
         key,
-        options.includeSparse ?? false,
-        options.sparseEmbedder,
       );
     } catch (error) {
       await SeekDBStore.releaseClient(key);
@@ -168,78 +216,131 @@ export class SeekDBStore implements VectorStore {
     }
   }
 
-  // ─── Payload ↔ Metadata mapping ──────────────────────────────────────
-  private toSeekDBMetadata(payload: Record<string, unknown>): Record<string, any> {
-    return {
+  // ─── Payload ↔ SQL/JSON mapping ──────────────────────────────────────
+  private normalizeUserMetadata(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  private serializePayloadMetadata(payload: Record<string, unknown>): string {
+    // Mirror Python OceanBase behavior: the text body lives in the document/fulltext
+    // column, while JSON metadata only stores structured fields.
+    return JSON.stringify({
       user_id: (payload.user_id as string) ?? '',
       agent_id: (payload.agent_id as string) ?? '',
       run_id: (payload.run_id as string) ?? '',
+      actor_id: (payload.actor_id as string) ?? '',
       hash: (payload.hash as string) ?? '',
       created_at: (payload.created_at as string) ?? '',
       updated_at: (payload.updated_at as string) ?? '',
-      scope: (payload.scope as string) ?? '',
       category: (payload.category as string) ?? '',
-      access_count: (payload.access_count as number) ?? 0,
-      // Base64-encode metadata to avoid SeekDB C engine JSON parsing issues
-      metadata_b64: Buffer.from(JSON.stringify(payload.metadata ?? {})).toString('base64'),
-    };
+      metadata: this.normalizeUserMetadata(payload.metadata),
+    });
   }
 
-  private decodeUserMetadata(metadata: Record<string, any> | null | undefined): Record<string, unknown> {
-    if (!metadata) return {};
-    try {
-      if (metadata.metadata_b64) {
-        return JSON.parse(Buffer.from(metadata.metadata_b64, 'base64').toString()) as Record<string, unknown>;
+  private parseStoredMetadata(value: unknown): Record<string, any> {
+    if (!value) return {};
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as Record<string, any>;
+      } catch {
+        return {};
       }
-      if (metadata.metadata_json) {
-        return JSON.parse(metadata.metadata_json) as Record<string, unknown>;
-      }
-    } catch {
-      return {};
+    }
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, any>;
     }
     return {};
   }
 
-  private withSystemScores(
-    metadata: Record<string, any> | null | undefined,
-    systemScores: Record<string, unknown> = {},
-  ): Record<string, unknown> {
+  private getUserMetadata(metadata: Record<string, any>): Record<string, unknown> {
+    return this.normalizeUserMetadata(metadata.metadata);
+  }
+
+  private getScope(metadata: Record<string, any>): string | undefined {
+    const scope = this.getUserMetadata(metadata).scope;
+    return typeof scope === 'string' && scope.length > 0 ? scope : undefined;
+  }
+
+  private getAccessCount(metadata: Record<string, any>): number {
+    const accessCount = this.getUserMetadata(metadata).access_count;
+    return typeof accessCount === 'number' && Number.isFinite(accessCount) ? accessCount : 0;
+  }
+
+  private parseEmbedding(value: unknown): number[] | undefined {
+    if (Array.isArray(value)) return value as number[];
+    if (typeof value === 'string' && value.length > 0) {
+      try {
+        return JSON.parse(value) as number[];
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private toRecordFromRow(row: {
+    _id: string;
+    document?: string | null;
+    metadata?: unknown;
+    embedding?: unknown;
+  }): VectorStoreRecord {
+    const metadata = this.parseStoredMetadata(row.metadata);
+    const userMetadata = this.getUserMetadata(metadata);
     return {
-      ...this.decodeUserMetadata(metadata),
-      ...systemScores,
+      id: String(row._id),
+      content: row.document ?? '',
+      userId: metadata.user_id || undefined,
+      agentId: metadata.agent_id || undefined,
+      runId: metadata.run_id || undefined,
+      actorId: metadata.actor_id || undefined,
+      hash: metadata.hash || undefined,
+      metadata: userMetadata,
+      embedding: this.parseEmbedding(row.embedding),
+      createdAt: metadata.created_at || getCurrentDatetimeIsoformat(),
+      updatedAt: metadata.updated_at || getCurrentDatetimeIsoformat(),
+      scope: this.getScope(metadata),
+      category: metadata.category || undefined,
+      accessCount: this.getAccessCount(metadata),
     };
   }
 
-  private toRecord(
+  private toSearchMatch(
     id: string,
     document: string | null,
-    metadata: Record<string, any> | null,
-    embedding?: number[] | null
-  ): VectorStoreRecord {
-    const m = metadata ?? {};
+    metadataValue: Record<string, any> | null,
+    score: number,
+    systemScores: Record<string, unknown> = {},
+  ): VectorStoreSearchMatch {
+    const metadata = this.parseStoredMetadata(metadataValue);
+    const userMetadata = this.getUserMetadata(metadata);
     return {
       id,
       content: document ?? '',
-      userId: m.user_id || undefined,
-      agentId: m.agent_id || undefined,
-      runId: m.run_id || undefined,
-      hash: m.hash || undefined,
-      metadata: this.decodeUserMetadata(m),
-      embedding: embedding ?? undefined,
-      createdAt: m.created_at || new Date().toISOString(),
-      updatedAt: m.updated_at || new Date().toISOString(),
-      scope: m.scope || undefined,
-      category: m.category || undefined,
-      accessCount: m.access_count ?? 0,
+      score,
+      userId: metadata.user_id || undefined,
+      agentId: metadata.agent_id || undefined,
+      runId: metadata.run_id || undefined,
+      actorId: metadata.actor_id || undefined,
+      metadata: {
+        ...userMetadata,
+        ...(metadata.category ? { category: metadata.category } : {}),
+        ...systemScores,
+      },
+      createdAt: metadata.created_at || undefined,
+      updatedAt: metadata.updated_at || undefined,
+      scope: this.getScope(metadata),
+      category: metadata.category || undefined,
+      accessCount: this.getAccessCount(metadata),
     };
   }
 
-  private buildWhereClause(filters: VectorStoreFilter): Record<string, any> | null {
+  private buildQueryWhereClause(filters: VectorStoreFilter): Record<string, any> | null {
     const conditions: Record<string, any>[] = [];
     if (filters.userId) conditions.push({ user_id: { $eq: filters.userId } });
     if (filters.agentId) conditions.push({ agent_id: { $eq: filters.agentId } });
     if (filters.runId) conditions.push({ run_id: { $eq: filters.runId } });
-    if (filters.scope) conditions.push({ scope: { $eq: filters.scope } });
+    if (filters.actorId) conditions.push({ actor_id: { $eq: filters.actorId } });
     if (filters.category) conditions.push({ category: { $eq: filters.category } });
 
     if (conditions.length === 0) return null;
@@ -247,213 +348,142 @@ export class SeekDBStore implements VectorStore {
     return { $and: conditions };
   }
 
-  private toSearchMatch(
-    id: string,
-    document: string | null,
-    metadata: Record<string, any> | null,
-    score: number,
-    systemScores: Record<string, unknown> = {},
-  ): VectorStoreSearchMatch {
+  private buildSqlWhere(filters: VectorStoreFilter): { clause: string; params: unknown[] } {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filters.userId) {
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.user_id')) = ?");
+      params.push(filters.userId);
+    }
+    if (filters.agentId) {
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.agent_id')) = ?");
+      params.push(filters.agentId);
+    }
+    if (filters.runId) {
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.run_id')) = ?");
+      params.push(filters.runId);
+    }
+    if (filters.actorId) {
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.actor_id')) = ?");
+      params.push(filters.actorId);
+    }
+    if (filters.category) {
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.category')) = ?");
+      params.push(filters.category);
+    }
     return {
-      id,
-      content: document ?? '',
-      score,
-      metadata: this.withSystemScores(metadata, systemScores),
-      createdAt: metadata?.created_at || undefined,
-      updatedAt: metadata?.updated_at || undefined,
-      accessCount: metadata?.access_count ?? 0,
+      clause: conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '',
+      params,
     };
   }
 
-  private buildDefaultSparseEmbedder(): SparseEmbedder {
-    const stopwords = new Set([...ENGLISH_STOPWORDS, ...CHINESE_STOPWORDS]);
-    return new BM25SparseEmbedder({
-      stopwords,
-      tokenizer: (text: string) => tokenizeCJK(text, stopwords),
-    });
+  private async selectRows(
+    filters: VectorStoreFilter = {},
+    columns = '_id, document, embedding, metadata',
+  ): Promise<Array<{ _id: string; document?: string | null; embedding?: unknown; metadata?: unknown }>> {
+    const { clause, params } = this.buildSqlWhere(filters);
+    return await this.client.execute(
+      `SELECT ${columns} FROM \`${this.tableName}\`${clause}`,
+      params,
+    ) as Array<{ _id: string; document?: string | null; embedding?: unknown; metadata?: unknown }>;
   }
 
-  private async loadHybridCandidates(filters: VectorStoreFilter): Promise<Array<{
-    id: string;
-    content: string;
-    metadata: Record<string, any>;
-    createdAt?: string;
-    updatedAt?: string;
-    accessCount: number;
-  }>> {
-    const where = this.buildWhereClause(filters);
-    const result = await this.collection.get({
-      ...(where ? { where } : {}),
-      include: ['documents', 'metadatas'],
-    });
-    const candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }> = [];
+  private applyScopeFilter<T extends { scope?: string }>(items: T[], filters: VectorStoreFilter): T[] {
+    if (!filters.scope) return items;
+    return items.filter((item) => item.scope === filters.scope);
+  }
 
-    if (!result.ids) return candidates;
-    for (let i = 0; i < result.ids.length; i++) {
-      const metadata = (result.metadatas?.[i] ?? {}) as Record<string, any>;
-      candidates.push({
-        id: result.ids[i],
-        content: result.documents?.[i] ?? '',
-        metadata,
-        createdAt: metadata.created_at || undefined,
-        updatedAt: metadata.updated_at || undefined,
-        accessCount: metadata.access_count ?? 0,
-      });
+  private unwrapResultArray<T>(value: T[] | T[][] | undefined): T[] {
+    if (!Array.isArray(value)) return [];
+    if (value.length > 0 && Array.isArray(value[0])) {
+      return value[0] as T[];
     }
-    return candidates;
+    return value as T[];
   }
 
-  private fullTextSearch(
+  private normalizeScores(rawScores: number[]): number[] {
+    if (rawScores.length === 0) return [];
+    const maxScore = Math.max(...rawScores);
+    const minScore = Math.min(...rawScores);
+    const range = maxScore - minScore;
+    if (range === 0) {
+      return rawScores.map(() => 1);
+    }
+    return rawScores.map((score) => (score - minScore) / range);
+  }
+
+  private async nativeFullTextSearch(
     queryText: string,
-    candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }>,
+    filters: VectorStoreFilter,
     limit: number,
-  ): VectorStoreSearchMatch[] {
-    const stopwords = new Set([...ENGLISH_STOPWORDS, ...CHINESE_STOPWORDS]);
-    const queryTokens = tokenizeCJK(queryText, stopwords);
-    if (queryTokens.length === 0) return [];
+  ): Promise<VectorStoreSearchMatch[]> {
+    const trimmedQuery = queryText.trim();
+    if (!trimmedQuery) return [];
 
-    const uniqueQueryTokens = Array.from(new Set(queryTokens));
+    const where = this.buildQueryWhereClause(filters);
+    const queryLimit = filters.scope ? Math.max(limit * 5, limit) : limit;
+    const result = await this.collection.hybridSearch({
+      query: {
+        whereDocument: { $contains: trimmedQuery },
+        ...(where ? { where } : {}),
+      },
+      nResults: queryLimit,
+      include: ['documents', 'metadatas', 'distances'],
+    });
+
+    const ids = this.unwrapResultArray<string>(result.ids);
+    if (ids.length === 0) return [];
+
+    const documents = this.unwrapResultArray<string | null>(result.documents);
+    const metadatas = this.unwrapResultArray<Record<string, any> | null>(result.metadatas);
+    const rawScores = this.unwrapResultArray<number>(result.distances).map((value) => Number(value ?? 0));
+    const normalizedScores = this.normalizeScores(rawScores);
+
     const matches: VectorStoreSearchMatch[] = [];
-    for (const candidate of candidates) {
-      const docTokens = tokenizeCJK(candidate.content, stopwords);
-      if (docTokens.length === 0) continue;
-
-      const tokenCounts = new Map<string, number>();
-      for (const token of docTokens) {
-        tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
-      }
-
-      let matchedTerms = 0;
-      let weightedHits = 0;
-      for (const token of uniqueQueryTokens) {
-        const count = tokenCounts.get(token) ?? 0;
-        if (count > 0) {
-          matchedTerms += 1;
-          weightedHits += Math.min(count, 3);
-        }
-      }
-
-      if (matchedTerms === 0) continue;
-
-      const coverage = matchedTerms / uniqueQueryTokens.length;
-      const density = Math.min(1, weightedHits / Math.max(uniqueQueryTokens.length, 1));
-      const phraseBonus = candidate.content.toLowerCase().includes(queryText.trim().toLowerCase()) ? 0.15 : 0;
-      const score = Math.max(0, Math.min(1, coverage * 0.7 + density * 0.3 + phraseBonus));
-
+    for (let i = 0; i < ids.length; i += 1) {
+      const metadata = metadatas[i] ?? {};
+      const score = normalizedScores[i] ?? 0;
       matches.push(this.toSearchMatch(
-        candidate.id,
-        candidate.content,
-        candidate.metadata,
+        ids[i],
+        documents[i] ?? '',
+        metadata,
         score,
         {
           _fts_score: score,
           _quality_score: score,
+          _native_fts_score: rawScores[i] ?? 0,
         },
       ));
     }
 
     matches.sort((a, b) => b.score - a.score);
-    return matches.slice(0, limit);
-  }
-
-  private async sparseSearch(
-    queryText: string,
-    candidates: Array<{
-      id: string;
-      content: string;
-      metadata: Record<string, any>;
-      createdAt?: string;
-      updatedAt?: string;
-      accessCount: number;
-    }>,
-    limit: number,
-  ): Promise<VectorStoreSearchMatch[]> {
-    if (!this.includeSparse && !this.sparseEmbedder) {
-      return [];
-    }
-
-    const embedder = this.sparseEmbedder ?? this.buildDefaultSparseEmbedder();
-    if (typeof embedder.fit === 'function') {
-      embedder.fit(candidates.map((candidate) => candidate.content));
-    }
-
-    const querySparse = await embedder.embedSparse(queryText);
-    if (querySparse.indices.length === 0) {
-      return [];
-    }
-
-    const docSparse = await embedder.embedSparseBatch(candidates.map((candidate) => candidate.content));
-    const rawScores = candidates.map((candidate, index) => ({
-      candidate,
-      raw: sparseDotProduct(querySparse, docSparse[index]),
-    })).filter((entry) => entry.raw > 0);
-
-    if (rawScores.length === 0) return [];
-
-    const maxScore = Math.max(...rawScores.map((entry) => entry.raw));
-    const minScore = Math.min(...rawScores.map((entry) => entry.raw));
-    const range = maxScore - minScore;
-
-    const matches = rawScores.map(({ candidate, raw }) => {
-      const score = range === 0 ? 1 : (raw - minScore) / range;
-      return this.toSearchMatch(
-        candidate.id,
-        candidate.content,
-        candidate.metadata,
-        score,
-        {
-          _sparse_similarity: score,
-          _quality_score: score,
-        },
-      );
-    });
-
-    matches.sort((a, b) => b.score - a.score);
-    return matches.slice(0, limit);
+    return this.applyScopeFilter(matches, filters).slice(0, limit);
   }
 
   private fuseHybridResults(
     vectorResults: VectorStoreSearchMatch[],
     textResults: VectorStoreSearchMatch[],
-    sparseResults: VectorStoreSearchMatch[],
     limit: number,
   ): VectorStoreSearchMatch[] {
     const rrfK = 60;
     const weights = {
       vector: vectorResults.length > 0 ? 0.5 : 0,
       text: textResults.length > 0 ? 0.5 : 0,
-      sparse: sparseResults.length > 0 ? 0.25 : 0,
     };
-    const weightSum = weights.vector + weights.text + weights.sparse || 1;
+    const weightSum = weights.vector + weights.text || 1;
 
     type RankedEntry = {
       base: VectorStoreSearchMatch;
       vectorScore?: number;
       textScore?: number;
-      sparseScore?: number;
       vectorRank?: number;
       textRank?: number;
-      sparseRank?: number;
     };
     const combined = new Map<string, RankedEntry>();
 
     const register = (
       result: VectorStoreSearchMatch,
-      kind: 'vector' | 'text' | 'sparse',
+      kind: 'vector' | 'text',
       rank: number,
       score: number,
     ): void => {
@@ -464,12 +494,9 @@ export class SeekDBStore implements VectorStore {
       if (kind === 'vector') {
         entry.vectorScore = score;
         entry.vectorRank = rank;
-      } else if (kind === 'text') {
+      } else {
         entry.textScore = score;
         entry.textRank = rank;
-      } else {
-        entry.sparseScore = score;
-        entry.sparseRank = rank;
       }
       if ((result.score ?? 0) > (entry.base.score ?? 0)) {
         entry.base = {
@@ -490,19 +517,16 @@ export class SeekDBStore implements VectorStore {
 
     vectorResults.forEach((result, index) => register(result, 'vector', index + 1, result.score));
     textResults.forEach((result, index) => register(result, 'text', index + 1, result.score));
-    sparseResults.forEach((result, index) => register(result, 'sparse', index + 1, result.score));
 
     const fused = Array.from(combined.values()).map((entry) => {
       const fusionScore = (
         (entry.vectorRank ? weights.vector / (rrfK + entry.vectorRank) : 0) +
-        (entry.textRank ? weights.text / (rrfK + entry.textRank) : 0) +
-        (entry.sparseRank ? weights.sparse / (rrfK + entry.sparseRank) : 0)
+        (entry.textRank ? weights.text / (rrfK + entry.textRank) : 0)
       ) / weightSum;
 
       const qualityScore = (
         (entry.vectorScore ?? 0) * weights.vector +
-        (entry.textScore ?? 0) * weights.text +
-        (entry.sparseScore ?? 0) * weights.sparse
+        (entry.textScore ?? 0) * weights.text
       ) / weightSum;
 
       return {
@@ -512,7 +536,6 @@ export class SeekDBStore implements VectorStore {
           ...(entry.base.metadata ?? {}),
           _vector_similarity: entry.vectorScore,
           _fts_score: entry.textScore,
-          _sparse_similarity: entry.sparseScore,
           _quality_score: qualityScore,
           _fusion_score: fusionScore,
         },
@@ -526,28 +549,25 @@ export class SeekDBStore implements VectorStore {
   // ─── VectorStore interface ───────────────────────────────────────────
 
   async insert(id: string, vector: number[], payload: Record<string, unknown>): Promise<void> {
-    const document = (payload.data as string) ?? '';
-    await this.collection.add({
-      ids: [id],
-      documents: [document],
-      embeddings: [vector],
-      metadatas: [this.toSeekDBMetadata(payload)],
-    });
+    await this.client.execute(
+      `INSERT INTO \`${this.tableName}\` (_id, document, embedding, metadata) VALUES (?, ?, ?, ?)`,
+      [
+        id,
+        (payload.data as string) ?? '',
+        JSON.stringify(vector),
+        this.serializePayloadMetadata(payload),
+      ],
+    );
   }
 
   async getById(id: string, userId?: string, agentId?: string): Promise<VectorStoreRecord | null> {
-    const result = await this.collection.get({
-      ids: [id],
-      include: ['documents', 'metadatas', 'embeddings'],
-    });
-    if (!result.ids || result.ids.length === 0) return null;
+    const rows = await this.client.execute(
+      `SELECT _id, document, embedding, metadata FROM \`${this.tableName}\` WHERE _id = ? LIMIT 1`,
+      [id],
+    ) as Array<{ _id: string; document?: string | null; embedding?: unknown; metadata?: unknown }>;
+    if (rows.length === 0) return null;
 
-    const record = this.toRecord(
-      result.ids[0],
-      result.documents?.[0] ?? null,
-      result.metadatas?.[0] ?? null,
-      result.embeddings?.[0] ?? null
-    );
+    const record = this.toRecordFromRow(rows[0]);
 
     if (userId && record.userId !== userId) return null;
     if (agentId && record.agentId !== agentId) return null;
@@ -555,19 +575,31 @@ export class SeekDBStore implements VectorStore {
   }
 
   async update(id: string, vector: number[], payload: Record<string, unknown>): Promise<void> {
-    const document = (payload.data as string) ?? '';
-    await this.collection.update({
-      ids: [id],
-      documents: [document],
-      embeddings: [vector],
-      metadatas: [this.toSeekDBMetadata(payload)],
-    });
+    await this.client.execute(
+      `UPDATE \`${this.tableName}\` SET document = ?, embedding = ?, metadata = ? WHERE _id = ?`,
+      [
+        (payload.data as string) ?? '',
+        JSON.stringify(vector),
+        this.serializePayloadMetadata(payload),
+        id,
+      ],
+    );
   }
 
   async remove(id: string): Promise<boolean> {
-    const existing = await this.collection.get({ ids: [id] });
-    if (!existing.ids || existing.ids.length === 0) return false;
-    await this.collection.delete({ ids: [id] });
+    const existing = await this.client.execute(
+      `SELECT _id FROM \`${this.tableName}\` WHERE _id = ? LIMIT 1`,
+      [id],
+    ) as Array<{ _id: string }>;
+    if (existing.length === 0) return false;
+
+    const result = await this.client.execute(
+      `DELETE FROM \`${this.tableName}\` WHERE _id = ?`,
+      [id],
+    ) as Array<{ affected_rows?: number }>;
+    if (Array.isArray(result) && result.length > 0 && typeof result[0]?.affected_rows === 'number') {
+      return result[0].affected_rows > 0;
+    }
     return true;
   }
 
@@ -577,30 +609,24 @@ export class SeekDBStore implements VectorStore {
     offset = 0,
     options: VectorStoreListOptions = {}
   ): Promise<{ records: VectorStoreRecord[]; total: number }> {
-    const where = this.buildWhereClause(filters);
-
-    const allResults = await this.collection.get({
-      ...(where ? { where } : {}),
-      include: ['documents', 'metadatas', 'embeddings'],
-    });
-
-    const total = allResults.ids?.length ?? 0;
-
-    let records: VectorStoreRecord[] = [];
-    if (allResults.ids) {
-      for (let i = 0; i < allResults.ids.length; i++) {
-        records.push(this.toRecord(
-          allResults.ids[i],
-          allResults.documents?.[i] ?? null,
-          allResults.metadatas?.[i] ?? null,
-          allResults.embeddings?.[i] ?? null
-        ));
-      }
-    }
+    let records = (await this.selectRows(filters)).map((row) => this.toRecordFromRow(row));
+    records = this.applyScopeFilter(records, filters);
+    const total = records.length;
 
     // Client-side sorting (seekdb get() has no ORDER BY)
     if (options.sortBy) {
-      const field = options.sortBy as keyof VectorStoreRecord;
+      const sortFieldMap: Record<string, keyof VectorStoreRecord> = {
+        created_at: 'createdAt',
+        updated_at: 'updatedAt',
+        access_count: 'accessCount',
+        createdAt: 'createdAt',
+        updatedAt: 'updatedAt',
+        accessCount: 'accessCount',
+        category: 'category',
+        scope: 'scope',
+        id: 'id',
+      };
+      const field = (sortFieldMap[options.sortBy] ?? options.sortBy) as keyof VectorStoreRecord;
       const dir = options.order === 'asc' ? 1 : -1;
       records.sort((a, b) => {
         const aVal = a[field];
@@ -626,11 +652,12 @@ export class SeekDBStore implements VectorStore {
     limit = 30
   ): Promise<VectorStoreSearchMatch[]> {
     if (limit <= 0) return [];
-    const where = this.buildWhereClause(filters);
+    const where = this.buildQueryWhereClause(filters);
+    const queryLimit = filters.scope ? Math.max(limit * 5, limit) : limit;
 
     const result = await this.collection.query({
       queryEmbeddings: [queryVector],
-      nResults: limit,
+      nResults: queryLimit,
       ...(where ? { where } : {}),
       include: ['documents', 'metadatas', 'distances'],
     });
@@ -655,7 +682,7 @@ export class SeekDBStore implements VectorStore {
       ));
     }
 
-    return matches;
+    return this.applyScopeFilter(matches, filters).slice(0, limit);
   }
 
   async hybridSearch(
@@ -672,56 +699,77 @@ export class SeekDBStore implements VectorStore {
       return vectorResults.slice(0, limit);
     }
 
-    const candidates = await this.loadHybridCandidates(filters);
-    if (candidates.length === 0) {
-      return [];
+    try {
+      const textResults = await this.nativeFullTextSearch(queryText, filters, candidateLimit);
+      if (textResults.length === 0) {
+        return vectorResults.slice(0, limit);
+      }
+      return this.fuseHybridResults(vectorResults, textResults, limit);
+    } catch {
+      return vectorResults.slice(0, limit);
     }
-
-    const textResults = this.fullTextSearch(queryText, candidates, candidateLimit);
-    const sparseResults = await this.sparseSearch(queryText, candidates, candidateLimit);
-    return this.fuseHybridResults(vectorResults, textResults, sparseResults, limit);
   }
 
   async count(filters: VectorStoreFilter = {}): Promise<number> {
-    const where = this.buildWhereClause(filters);
-    if (!where) {
-      return this.collection.count();
+    if (filters.scope) {
+      const { records } = await this.list(filters, Number.MAX_SAFE_INTEGER, 0);
+      return records.length;
     }
-    const result = await this.collection.get({ where, include: [] });
-    return result.ids?.length ?? 0;
+    const { clause, params } = this.buildSqlWhere(filters);
+    const result = await this.client.execute(
+      `SELECT COUNT(*) AS count FROM \`${this.tableName}\`${clause}`,
+      params,
+    ) as Array<{ count: number | string }>;
+    return Number(result[0]?.count ?? 0);
   }
 
   async incrementAccessCount(id: string): Promise<void> {
-    const result = await this.collection.get({ ids: [id], include: ['metadatas'] });
-    if (!result.ids || result.ids.length === 0) return;
-    const metadata = result.metadatas?.[0] ?? {};
-    await this.collection.update({
-      ids: [id],
-      metadatas: [{ ...metadata, access_count: ((metadata.access_count as number) ?? 0) + 1 }],
-    });
+    const record = await this.getById(id);
+    if (!record) return;
+    const metadata = {
+      ...(record.metadata ?? {}),
+      access_count: (record.accessCount ?? 0) + 1,
+    };
+    await this.client.execute(
+      `UPDATE \`${this.tableName}\` SET metadata = ? WHERE _id = ?`,
+      [
+        this.serializePayloadMetadata({
+          data: record.content,
+          user_id: record.userId ?? null,
+          agent_id: record.agentId ?? null,
+          run_id: record.runId ?? null,
+          actor_id: record.actorId ?? null,
+          hash: record.hash ?? '',
+          created_at: record.createdAt,
+          updated_at: record.updatedAt,
+          category: record.category ?? null,
+          fulltext_content: record.content,
+          metadata,
+        }),
+        id,
+      ],
+    );
   }
 
   async incrementAccessCountBatch(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    const result = await this.collection.get({ ids, include: ['metadatas'] });
-    if (!result.ids || result.ids.length === 0) return;
-
-    const updatedMetadatas = (result.metadatas ?? []).map((m: any) => ({
-      ...(m ?? {}),
-      access_count: ((m?.access_count as number) ?? 0) + 1,
-    }));
-    await this.collection.update({ ids: result.ids, metadatas: updatedMetadatas });
+    for (const id of ids) {
+      await this.incrementAccessCount(id);
+    }
   }
 
   async removeAll(filters: VectorStoreFilter = {}): Promise<void> {
-    const where = this.buildWhereClause(filters);
-    if (where) {
-      await this.collection.delete({ where });
-    } else {
-      const result = await this.collection.get({ include: [] });
-      if (result.ids && result.ids.length > 0) {
-        await this.collection.delete({ ids: [...result.ids] });
-      }
+    if (!filters.scope) {
+      const { clause, params } = this.buildSqlWhere(filters);
+      await this.client.execute(
+        `DELETE FROM \`${this.tableName}\`${clause}`,
+        params,
+      );
+      return;
+    }
+
+    const { records } = await this.list(filters, Number.MAX_SAFE_INTEGER, 0);
+    for (const record of records) {
+      await this.remove(record.id);
     }
   }
 

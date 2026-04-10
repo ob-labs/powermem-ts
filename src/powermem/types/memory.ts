@@ -8,7 +8,7 @@ export interface ContentPart {
 
 /** Multimodal message (matches OpenAI/LangChain message format). */
 export interface MessageInput {
-  role: 'user' | 'assistant' | 'system';
+  role: string;
   content: string | ContentPart[];
 }
 
@@ -22,6 +22,7 @@ export interface MemoryRecord {
   userId?: string;
   agentId?: string;
   runId?: string;
+  actorId?: string;
   metadata?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
@@ -35,6 +36,7 @@ export interface AddParams {
   userId?: string;
   agentId?: string;
   runId?: string;
+  actorId?: string;
   metadata?: Record<string, unknown>;
   filters?: Record<string, unknown>;
   infer?: boolean;

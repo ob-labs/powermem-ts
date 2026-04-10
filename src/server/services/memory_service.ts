@@ -1,12 +1,38 @@
 import type { Memory } from '../../powermem/core/memory.js';
+import type { MemoryConfigInput } from '../../powermem/configs.js';
 import type {
   GetAllParams,
   FilterParams,
   UpdateParams,
 } from '../../powermem/types/memory.js';
+import type { MemoryOptions } from '../../powermem/types/options.js';
+import { autoConfig } from '../../powermem/config_loader.js';
+import { Memory as MemoryClass } from '../../powermem/core/memory.js';
+
+export interface MemoryServiceCreateOptions {
+  config?: MemoryConfigInput;
+  memory?: Memory;
+  memoryOptions?: MemoryOptions;
+}
 
 export class MemoryService {
   constructor(private readonly memory: Memory) {}
+
+  static async create(options: MemoryServiceCreateOptions = {}): Promise<MemoryService> {
+    const memory = options.memory ?? await MemoryClass.create({
+      ...(options.memoryOptions ?? {}),
+      config: options.memoryOptions?.config ?? options.config ?? autoConfig(),
+    });
+    return new MemoryService(memory);
+  }
+
+  getStorageType() {
+    return this.memory.getStorageType();
+  }
+
+  getMemory(): Memory {
+    return this.memory;
+  }
 
   add(content: string, options: Record<string, unknown> = {}) {
     return this.memory.add(content, options as never);
@@ -54,5 +80,9 @@ export class MemoryService {
 
   importMemories(memories: Array<{ content: string; metadata?: Record<string, unknown>; userId?: string; agentId?: string }>, options?: { infer?: boolean }) {
     return this.memory.importMemories(memories, options);
+  }
+
+  async close(): Promise<void> {
+    await this.memory.close();
   }
 }

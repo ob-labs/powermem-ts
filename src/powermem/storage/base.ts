@@ -11,6 +11,7 @@ export interface VectorStoreRecord {
   userId?: string;
   agentId?: string;
   runId?: string;
+  actorId?: string;
   hash?: string;
   metadata?: Record<string, unknown>;
   embedding?: number[];
@@ -25,6 +26,7 @@ export interface VectorStoreFilter {
   userId?: string;
   agentId?: string;
   runId?: string;
+  actorId?: string;
   scope?: string;
   category?: string;
   [key: string]: unknown;
@@ -34,9 +36,15 @@ export interface VectorStoreSearchMatch {
   id: string;
   content: string;
   score: number;
+  userId?: string;
+  agentId?: string;
+  runId?: string;
+  actorId?: string;
   metadata?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
+  scope?: string;
+  category?: string;
   accessCount?: number;
 }
 

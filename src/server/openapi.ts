@@ -5,10 +5,32 @@
 
 export function buildOpenAPISpec(version: string) {
   const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
-  const ok = (desc: string, schema?: object) => ({
-    '200': { description: desc, ...(schema ? { content: { 'application/json': { schema } } } : {}) },
+  const apiEnvelope = (schema?: object) => ({
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', enum: [true] },
+      data: schema ?? { type: 'object' },
+      message: { type: 'string' },
+      timestamp: { type: 'string', format: 'date-time' },
+    },
+    required: ['success', 'data', 'timestamp'],
   });
-  const err = { '401': { description: 'Unauthorized' }, '500': { description: 'Server error' } };
+  const ok = (desc: string, schema?: object) => ({
+    '200': {
+      description: desc,
+      content: {
+        'application/json': {
+          schema: apiEnvelope(schema),
+        },
+      },
+    },
+  });
+  const err = {
+    '401': { description: 'Unauthorized', content: { 'application/json': { schema: ref('ErrorResponse') } } },
+    '422': { description: 'Validation error', content: { 'application/json': { schema: ref('ErrorResponse') } } },
+    '500': { description: 'Server error', content: { 'application/json': { schema: ref('ErrorResponse') } } },
+    '503': { description: 'Service unavailable', content: { 'application/json': { schema: ref('ErrorResponse') } } },
+  };
 
   return {
     openapi: '3.0.3',
@@ -86,19 +108,56 @@ export function buildOpenAPISpec(version: string) {
       },
       // ─── Users ───────────────────────────────────
       '/users/profiles': {
-        get: { summary: 'List user profiles', tags: ['users'], parameters: [intParam('limit', 20)], responses: { ...ok('Profiles'), ...err } },
+        get: {
+          summary: 'List user profiles',
+          tags: ['users'],
+          parameters: [
+            strParam('user_id'),
+            boolParam('fuzzy'),
+            strParam('main_topic'),
+            strParam('sub_topic'),
+            strParam('topic_value'),
+            intParam('limit', 20),
+            intParam('offset', 0),
+          ],
+          responses: { ...ok('Profiles', ref('UserProfileListResponse')), ...err },
+        },
       },
       '/users/{userId}/profile': {
-        get: { summary: 'Get user profile', tags: ['users'], parameters: [pathParam('userId')], responses: { ...ok('Profile'), ...err } },
-        post: { summary: 'Extract profile from content', tags: ['users'], parameters: [pathParam('userId')], requestBody: jsonBody({ type: 'object', properties: { content: { type: 'string' }, infer: { type: 'boolean' } } }), responses: { ...ok('Extraction result'), ...err } },
-        delete: { summary: 'Delete user profile', tags: ['users'], parameters: [pathParam('userId')], responses: { ...ok('Deleted'), ...err } },
+        get: {
+          summary: 'Get user profile',
+          tags: ['users'],
+          parameters: [pathParam('userId')],
+          responses: {
+            ...ok('Profile', ref('UserProfileResponse')),
+            '404': { description: 'User profile not found' },
+            ...err,
+          },
+        },
+        post: {
+          summary: 'Add messages and extract user profile',
+          tags: ['users'],
+          parameters: [pathParam('userId')],
+          requestBody: jsonBody(ref('UserProfileAddRequest')),
+          responses: { ...ok('Extraction result', ref('UserProfileAddResult')), ...err },
+        },
+        delete: {
+          summary: 'Delete user profile',
+          tags: ['users'],
+          parameters: [pathParam('userId')],
+          responses: {
+            ...ok('Deleted', ref('UserProfileDeleteResponse')),
+            '404': { description: 'User profile not found' },
+            ...err,
+          },
+        },
       },
       '/users/{userId}/memories': {
-        get: { summary: 'List user memories', tags: ['users'], parameters: [pathParam('userId'), intParam('limit', 100), intParam('offset', 0)], responses: { ...ok('Memories', ref('MemoryListResponse')), ...err } },
-        delete: { summary: 'Delete all user memories', tags: ['users'], parameters: [pathParam('userId')], responses: { ...ok('Deleted'), ...err } },
+        get: { summary: 'List user memories', tags: ['users'], parameters: [pathParam('userId'), intParam('limit', 100), intParam('offset', 0)], responses: { ...ok('Memories', ref('UserMemoryListResponse')), ...err } },
+        delete: { summary: 'Delete all user memories', tags: ['users'], parameters: [pathParam('userId')], responses: { ...ok('Deleted', ref('DeleteUserMemoriesResponse')), ...err } },
       },
       '/users/{userId}/memories/{memoryId}': {
-        put: { summary: 'Update user memory', tags: ['users'], parameters: [pathParam('userId'), pathParam('memoryId')], requestBody: jsonBody(ref('UpdateMemoryRequest')), responses: { ...ok('Updated', ref('MemoryRecord')), ...err } },
+        put: { summary: 'Update user memory', tags: ['users'], parameters: [pathParam('userId'), pathParam('memoryId')], requestBody: jsonBody(ref('UserProfileUpdateRequest')), responses: { ...ok('Updated', ref('UserMemoryResponse')), ...err } },
       },
     },
     components: {
@@ -109,14 +168,157 @@ export function buildOpenAPISpec(version: string) {
       schemas: {
         HealthResponse: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: { status: { type: 'string' } } } } },
         StatusResponse: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: { version: { type: 'string' }, uptime: { type: 'integer' }, status: { type: 'string' }, nodeVersion: { type: 'string' } } } } },
-        MemoryRecord: { type: 'object', properties: { id: { type: 'string' }, memoryId: { type: 'string' }, content: { type: 'string' }, userId: { type: 'string' }, agentId: { type: 'string' }, runId: { type: 'string' }, metadata: { type: 'object' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' }, scope: { type: 'string' }, category: { type: 'string' }, accessCount: { type: 'integer' } } },
+        MemoryRecord: { type: 'object', properties: { id: { type: 'string' }, memoryId: { type: 'string' }, content: { type: 'string' }, userId: { type: 'string' }, agentId: { type: 'string' }, runId: { type: 'string' }, actorId: { type: 'string' }, metadata: { type: 'object' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' }, scope: { type: 'string' }, category: { type: 'string' }, accessCount: { type: 'integer' } } },
+        ErrorResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', enum: [false] },
+            error: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                message: { type: 'string' },
+                details: { type: 'object' },
+              },
+              required: ['code', 'message', 'details'],
+            },
+            timestamp: { type: 'string', format: 'date-time' },
+          },
+          required: ['success', 'error', 'timestamp'],
+        },
         AddResult: { type: 'object', properties: { memories: { type: 'array', items: { $ref: '#/components/schemas/MemoryRecord' } }, message: { type: 'string' } } },
-        SearchResult: { type: 'object', properties: { results: { type: 'array', items: { type: 'object', properties: { memoryId: { type: 'string' }, content: { type: 'string' }, score: { type: 'number' } } } }, total: { type: 'integer' }, query: { type: 'string' }, relations: { type: 'array', items: { type: 'object' } } } },
+        SearchResult: { type: 'object', properties: { results: { type: 'array', items: { type: 'object', properties: { memoryId: { type: 'string' }, content: { type: 'string' }, score: { type: 'number' }, userId: { type: 'string' }, agentId: { type: 'string' }, runId: { type: 'string' }, actorId: { type: 'string' }, metadata: { type: 'object' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } } }, total: { type: 'integer' }, query: { type: 'string' }, relations: { type: 'array', items: { type: 'object' } } } },
         MemoryListResponse: { type: 'object', properties: { memories: { type: 'array', items: { $ref: '#/components/schemas/MemoryRecord' } }, total: { type: 'integer' }, limit: { type: 'integer' }, offset: { type: 'integer' } } },
         CreateMemoryRequest: { type: 'object', required: ['content'], properties: { content: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'object' } }] }, user_id: { type: 'string' }, agent_id: { type: 'string' }, run_id: { type: 'string' }, infer: { type: 'boolean', default: false }, metadata: { type: 'object' } } },
         UpdateMemoryRequest: { type: 'object', properties: { content: { type: 'string' }, metadata: { type: 'object' } } },
         SearchRequest: { type: 'object', required: ['query'], properties: { query: { type: 'string' }, user_id: { type: 'string' }, agent_id: { type: 'string' }, limit: { type: 'integer', default: 10 } } },
         ImportItem: { type: 'object', required: ['content'], properties: { content: { type: 'string' }, userId: { type: 'string' }, agentId: { type: 'string' }, metadata: { type: 'object' } } },
+        MessageInput: {
+          type: 'object',
+          properties: {
+            role: { type: 'string' },
+            content: {
+              oneOf: [
+                { type: 'string' },
+                {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      type: { type: 'string' },
+                      text: { type: 'string' },
+                      image_url: { type: 'object', properties: { url: { type: 'string' }, detail: { type: 'string' } } },
+                      audio_url: { type: 'string' },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        UserMemoryResponse: {
+          type: 'object',
+          properties: {
+            memory_id: { type: 'string' },
+            id: { type: 'string' },
+            content: { type: 'string' },
+            user_id: { type: 'string' },
+            agent_id: { type: 'string' },
+            run_id: { type: 'string' },
+            metadata: { type: 'object' },
+            created_at: { type: 'string', format: 'date-time', nullable: true },
+            updated_at: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
+        UserMemoryListResponse: {
+          type: 'object',
+          properties: {
+            memories: { type: 'array', items: ref('UserMemoryResponse') },
+            total: { type: 'integer' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+          },
+        },
+        UserProfileResponse: {
+          type: 'object',
+          properties: {
+            user_id: { type: 'string' },
+            profile_content: { type: 'string', nullable: true },
+            topics: { type: 'object', nullable: true },
+            updated_at: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
+        UserProfileListResponse: {
+          type: 'object',
+          properties: {
+            profiles: { type: 'array', items: ref('UserProfileResponse') },
+            total: { type: 'integer' },
+            limit: { type: 'integer' },
+            offset: { type: 'integer' },
+          },
+        },
+        UserProfileAddRequest: {
+          type: 'object',
+          required: ['messages'],
+          properties: {
+            messages: {
+              oneOf: [
+                { type: 'string' },
+                ref('MessageInput'),
+                { type: 'array', items: ref('MessageInput') },
+              ],
+            },
+            agent_id: { type: 'string' },
+            run_id: { type: 'string' },
+            metadata: { type: 'object' },
+            filters: { type: 'object' },
+            scope: { type: 'string' },
+            memory_type: { type: 'string' },
+            prompt: { type: 'string' },
+            infer: { type: 'boolean', default: true },
+            profile_type: { type: 'string', enum: ['content', 'topics'], default: 'content' },
+            custom_topics: { oneOf: [{ type: 'string' }, { type: 'object' }] },
+            strict_mode: { type: 'boolean', default: false },
+            include_roles: { type: 'array', items: { type: 'string' } },
+            exclude_roles: { type: 'array', items: { type: 'string' } },
+            native_language: { type: 'string' },
+          },
+        },
+        UserProfileAddResult: {
+          type: 'object',
+          properties: {
+            memories: { type: 'array', items: ref('UserMemoryResponse') },
+            message: { type: 'string' },
+            profile_extracted: { type: 'boolean' },
+            profile_content: { type: 'string' },
+            topics: { type: 'object' },
+          },
+        },
+        UserProfileUpdateRequest: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content: { type: 'string' },
+            agent_id: { type: 'string' },
+            metadata: { type: 'object' },
+          },
+        },
+        UserProfileDeleteResponse: {
+          type: 'object',
+          properties: {
+            user_id: { type: 'string' },
+            deleted: { type: 'boolean' },
+          },
+        },
+        DeleteUserMemoriesResponse: {
+          type: 'object',
+          properties: {
+            user_id: { type: 'string' },
+            deleted_count: { type: 'integer' },
+            failed_count: { type: 'integer' },
+            total: { type: 'integer' },
+          },
+        },
       },
     },
     security: [{ ApiKeyHeader: [] }, { ApiKeyQuery: [] }],
@@ -135,6 +337,10 @@ function strParam(name: string, required = false) {
 
 function intParam(name: string, defaultValue?: number) {
   return { name, in: 'query' as const, schema: { type: 'integer' as const, ...(defaultValue !== undefined ? { default: defaultValue } : {}) } };
+}
+
+function boolParam(name: string, defaultValue?: boolean) {
+  return { name, in: 'query' as const, schema: { type: 'boolean' as const, ...(defaultValue !== undefined ? { default: defaultValue } : {}) } };
 }
 
 function userAgentParams() {

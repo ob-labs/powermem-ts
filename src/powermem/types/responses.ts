@@ -9,7 +9,13 @@ export interface SearchHit {
   memoryId: string;
   content: string;
   score?: number;
+  userId?: string;
+  agentId?: string;
+  runId?: string;
+  actorId?: string;
   metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SearchResult {

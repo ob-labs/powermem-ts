@@ -1,18 +1,42 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../../src/powermem/settings.js', () => ({
+  getDefaultEnvFile: () => undefined,
+}));
+
 import { createEmbeddingsFromEnv, createLLMFromEnv } from '../../src/powermem/integrations/factory.js';
 
 describe('provider-factory', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    // Clear relevant env vars
+    process.env = { ...originalEnv };
+
+    // Clear relevant env vars and provider aliases so tests stay hermetic.
     delete process.env.EMBEDDING_PROVIDER;
     delete process.env.EMBEDDING_API_KEY;
     delete process.env.EMBEDDING_MODEL;
     delete process.env.EMBEDDING_DIMS;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.QWEN_API_KEY;
+    delete process.env.DASHSCOPE_API_KEY;
+    delete process.env.AZURE_OPENAI_API_KEY;
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.SILICONFLOW_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.COHERE_API_KEY;
+    delete process.env.MISTRAL_API_KEY;
+    delete process.env.OPENAI_EMBEDDING_BASE_URL;
+    delete process.env.QWEN_EMBEDDING_BASE_URL;
+
     delete process.env.LLM_PROVIDER;
     delete process.env.LLM_API_KEY;
     delete process.env.LLM_MODEL;
+    delete process.env.OPENAI_LLM_BASE_URL;
+    delete process.env.QWEN_LLM_BASE_URL;
+    delete process.env.TOGETHER_API_KEY;
+    delete process.env.GROQ_API_KEY;
   });
 
   afterEach(() => {
@@ -20,9 +44,9 @@ describe('provider-factory', () => {
   });
 
   describe('createEmbeddingsFromEnv', () => {
-    it('throws when EMBEDDING_API_KEY is missing', async () => {
+    it('throws when embedding API key is missing', async () => {
       process.env.EMBEDDING_PROVIDER = 'openai';
-      await expect(createEmbeddingsFromEnv()).rejects.toThrow('EMBEDDING_API_KEY');
+      await expect(createEmbeddingsFromEnv()).rejects.toThrow('Embedding API key is required.');
     });
 
     it('creates OpenAI embeddings for "openai" provider', async () => {
@@ -56,9 +80,9 @@ describe('provider-factory', () => {
   });
 
   describe('createLLMFromEnv', () => {
-    it('throws when LLM_API_KEY is missing', async () => {
+    it('throws when LLM API key is missing', async () => {
       process.env.LLM_PROVIDER = 'openai';
-      await expect(createLLMFromEnv()).rejects.toThrow('LLM_API_KEY');
+      await expect(createLLMFromEnv()).rejects.toThrow('LLM API key is required.');
     });
 
     it('creates ChatOpenAI for "openai" provider', async () => {

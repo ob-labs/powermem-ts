@@ -26,7 +26,8 @@ export class QueryRewriter {
   }
 
   async rewrite(query: string, profileContent?: string): Promise<QueryRewriteResult> {
-    if (!this.enabled || !profileContent || query.length < 3) {
+    const normalizedQuery = query.trim();
+    if (!this.enabled || !profileContent || normalizedQuery.length < 3) {
       return { originalQuery: query, rewrittenQuery: query, isRewritten: false };
     }
 

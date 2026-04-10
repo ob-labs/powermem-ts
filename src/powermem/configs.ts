@@ -110,7 +110,7 @@ export type TimezoneConfig = z.infer<typeof TimezoneConfigSchema>;
 // ─── Provider configs ─────────────────────────────────────────────────────
 
 export const VectorStoreProviderConfigSchema = z.object({
-  provider: z.string().default('sqlite'),
+  provider: z.string().default('seekdb'),
   config: z.record(z.string(), z.unknown()).default({}),
 });
 export type VectorStoreProviderConfig = z.infer<typeof VectorStoreProviderConfigSchema>;
@@ -157,7 +157,7 @@ export type SparseEmbedderProviderConfig = z.infer<typeof SparseEmbedderProvider
 // ─── Main config ──────────────────────────────────────────────────────────
 
 export const MemoryConfigSchema = z.object({
-  vectorStore: VectorStoreProviderConfigSchema.default(() => ({ provider: 'sqlite', config: {} })),
+  vectorStore: VectorStoreProviderConfigSchema.default(() => ({ provider: 'seekdb', config: {} })),
   llm: LLMProviderConfigSchema.default(() => ({ provider: 'qwen', config: {} })),
   embedder: EmbedderProviderConfigSchema.default(() => ({ provider: 'qwen', config: {} })),
   graphStore: GraphStoreProviderConfigSchema.nullish(),

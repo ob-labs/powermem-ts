@@ -29,8 +29,14 @@ let seekdbAvailable = false;
   try {
     const s = await tryCreateStore(dir, 'check');
     seekdbAvailable = s != null;
-    // Don't call close() — SeekDB embedded may SIGABRT on cleanup
-  } finally {
+    // Don't call close() — SeekDB embedded may SIGABRT on cleanup.
+    // Defer directory removal to process exit so the native engine is no longer
+    // accessing the files when we delete them (avoids VsagException / SIGABRT).
+    process.on('exit', () => {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    });
+  } catch {
+    // If creation itself threw, safe to remove immediately
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   }
 }
@@ -42,19 +48,32 @@ describeIf('SeekDBStore', () => {
   let tmpDir: string;
 
   function makePayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    const {
+      metadata,
+      scope,
+      access_count,
+      actor_id,
+      fulltext_content,
+      ...rest
+    } = overrides;
+    const mergedMetadata = {
+      ...(metadata as Record<string, unknown> | undefined ?? {}),
+      ...(scope !== undefined ? { scope } : {}),
+      ...(access_count !== undefined ? { access_count } : { access_count: 0 }),
+    };
     return {
       data: 'test content',
       user_id: null,
       agent_id: null,
       run_id: null,
+      actor_id: actor_id ?? null,
       hash: 'abc123',
       created_at: '2024-01-01T00:00:00.000Z',
       updated_at: '2024-01-01T00:00:00.000Z',
-      scope: null,
       category: null,
-      access_count: 0,
-      metadata: {},
-      ...overrides,
+      fulltext_content: fulltext_content ?? ((rest.data as string | undefined) ?? 'test content'),
+      metadata: mergedMetadata,
+      ...rest,
     };
   }
 
@@ -150,14 +169,16 @@ describeIf('SeekDBStore', () => {
     expect(results[0].content).toBe('alice data');
   });
 
-  it('hybridSearch promotes keyword matches by query text', async () => {
+  it('hybridSearch uses native full-text matches to promote keyword hits', async () => {
     await store.insert('1', [0, 1, 0], makePayload({ data: 'TypeScript hybrid retrieval notes' }));
     await store.insert('2', [1, 0, 0], makePayload({ data: 'Completely unrelated content' }));
 
     const results = await store.hybridSearch([1, 0, 0], 'TypeScript hybrid', {}, 10);
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].content).toContain('TypeScript');
+    expect(results[0].metadata?._fts_score).toBeDefined();
     expect(results[0].metadata?._quality_score).toBeDefined();
+    expect(results[0].metadata?._sparse_similarity).toBeUndefined();
   });
 
   it('search and hybridSearch respect scope/category filters', async () => {
@@ -203,13 +224,12 @@ describeIf('SeekDBStore', () => {
   });
 
   it('metadata round-trip', async () => {
-    // Metadata is base64-encoded to bypass SeekDB C engine JSON limitations
     await store.insert('1', [1, 0, 0], makePayload({
       data: 'with meta',
       metadata: { key: 'value', nested: { deep: true }, tags: [1, 2, 3] },
     }));
     const rec = await store.getById('1');
-    expect(rec!.metadata).toEqual({ key: 'value', nested: { deep: true }, tags: [1, 2, 3] });
+    expect(rec!.metadata).toEqual({ key: 'value', nested: { deep: true }, tags: [1, 2, 3], access_count: 0 });
   });
 
   it('scope and category round-trip', async () => {
@@ -217,6 +237,7 @@ describeIf('SeekDBStore', () => {
     const rec = await store.getById('1');
     expect(rec!.scope).toBe('personal');
     expect(rec!.category).toBe('pref');
+    expect(rec!.metadata).toMatchObject({ scope: 'personal', access_count: 0 });
   });
 
   // ── SeekDB-specific edge cases (differ from SQLite behavior) ─────────
@@ -377,7 +398,7 @@ describeIf('SeekDBStore', () => {
     it('empty metadata object round-trips', async () => {
       await store.insert('1', [1, 0, 0], makePayload({ metadata: {} }));
       const rec = await store.getById('1');
-      expect(rec!.metadata).toEqual({});
+      expect(rec!.metadata).toEqual({ access_count: 0 });
     });
   });
 
@@ -461,7 +482,7 @@ describeIf('SeekDBStore', () => {
         metadata: { '标签': '重要', emoji: '🏷️' },
       }));
       const rec = await store.getById('1');
-      expect(rec!.metadata).toEqual({ '标签': '重要', emoji: '🏷️' });
+      expect(rec!.metadata).toEqual({ '标签': '重要', emoji: '🏷️', access_count: 0 });
     });
   });
 });

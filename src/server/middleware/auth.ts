@@ -6,6 +6,8 @@
  */
 import type { Request, Response, NextFunction } from 'express';
 import type { ServerConfig } from '../config.js';
+import { APIError, ErrorCode } from '../models/errors.js';
+import { createErrorResponse } from '../utils/http.js';
 
 export function createAuthMiddleware(config: ServerConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -27,20 +29,24 @@ export function createAuthMiddleware(config: ServerConfig) {
       (req.query.api_key as string | undefined);
 
     if (!apiKey) {
-      res.status(401).json({
-        success: false,
-        code: 'unauthorized',
-        message: 'API key required. Provide X-API-Key header or api_key query parameter.',
-      });
+      const error = new APIError(
+        ErrorCode.UNAUTHORIZED,
+        'API key required. Provide X-API-Key header or api_key query parameter.',
+        {},
+        401,
+      );
+      res.status(401).json(createErrorResponse(error));
       return;
     }
 
     if (!config.apiKeys.includes(apiKey)) {
-      res.status(401).json({
-        success: false,
-        code: 'unauthorized',
-        message: 'Invalid API key',
-      });
+      const error = new APIError(
+        ErrorCode.UNAUTHORIZED,
+        'Invalid API key',
+        {},
+        401,
+      );
+      res.status(401).json(createErrorResponse(error));
       return;
     }
 

@@ -6,6 +6,16 @@ import Database from 'better-sqlite3';
 import type { UserProfile } from './base.js';
 import { UserProfileStoreBase } from './base.js';
 import { SnowflakeIDGenerator } from '../../utils/snowflake.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
+
+type ProfileRow = {
+  id: string;
+  user_id: string;
+  profile_content?: string | null;
+  topics?: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export class SQLiteUserProfileStore extends UserProfileStoreBase {
   private db: Database.Database;
@@ -35,7 +45,7 @@ export class SQLiteUserProfileStore extends UserProfileStoreBase {
     const existing = this.db.prepare('SELECT id FROM user_profiles WHERE user_id = ? ORDER BY id DESC LIMIT 1')
       .get(userId) as { id: string } | undefined;
 
-    const now = new Date().toISOString();
+    const now = getCurrentDatetimeIsoformat();
     const topicsJson = topics ? JSON.stringify(topics) : null;
 
     if (existing) {
@@ -57,25 +67,161 @@ export class SQLiteUserProfileStore extends UserProfileStoreBase {
 
   async getProfileByUserId(userId: string): Promise<UserProfile | null> {
     const row = this.db.prepare('SELECT * FROM user_profiles WHERE user_id = ? ORDER BY id DESC LIMIT 1')
-      .get(userId) as any;
+      .get(userId) as ProfileRow | undefined;
     if (!row) return null;
     return this.toProfile(row);
   }
 
-  async getProfiles(options: { userId?: string; mainTopic?: string; limit?: number; offset?: number } = {}): Promise<UserProfile[]> {
+  private checkJsonPathExists(topics: Record<string, unknown> | undefined, jsonPath: string): boolean {
+    if (!topics || typeof topics !== 'object' || Array.isArray(topics)) return false;
+
+    const normalizedPath = jsonPath.startsWith('$.') ? jsonPath.slice(2) : jsonPath;
+    const parts = normalizedPath.split('.');
+    let current: unknown = topics;
+    for (const part of parts) {
+      if (!current || typeof current !== 'object' || Array.isArray(current) || !(part in (current as Record<string, unknown>))) {
+        return false;
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+    return true;
+  }
+
+  private checkTopicValueExists(topics: Record<string, unknown> | undefined, value: string): boolean {
+    if (!topics) return false;
+
+    const searchValue = (obj: unknown): boolean => {
+      if (Array.isArray(obj)) {
+        return obj.some((item) => searchValue(item));
+      }
+      if (obj && typeof obj === 'object') {
+        return Object.values(obj as Record<string, unknown>).some((nested) => searchValue(nested));
+      }
+      if (typeof obj === 'string') return obj === value;
+      if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj) === value;
+      return false;
+    };
+
+    return searchValue(topics);
+  }
+
+  private matchesFilters(
+    topics: Record<string, unknown> | undefined,
+    options: { mainTopic?: string[]; subTopic?: string[]; topicValue?: string[] },
+  ): boolean {
+    if (!topics) {
+      return !options.mainTopic?.length && !options.subTopic?.length && !options.topicValue?.length;
+    }
+
+    if (options.mainTopic?.length) {
+      const mainTopicMatch = options.mainTopic.some((mainTopic) => this.checkJsonPathExists(topics, `$.${mainTopic}`));
+      if (!mainTopicMatch) return false;
+    }
+
+    if (options.subTopic?.length) {
+      const validSubTopics = options.subTopic.filter((subTopic) => subTopic.includes('.'));
+      if (validSubTopics.length > 0) {
+        const subTopicMatch = validSubTopics.some((subTopic) => this.checkJsonPathExists(topics, `$.${subTopic}`));
+        if (!subTopicMatch) return false;
+      }
+    }
+
+    if (options.topicValue?.length) {
+      const validValues = options.topicValue.filter((topicValue) => topicValue != null);
+      if (validValues.length > 0) {
+        const topicValueMatch = validValues.some((topicValue) => this.checkTopicValueExists(topics, topicValue));
+        if (!topicValueMatch) return false;
+      }
+    }
+
+    return true;
+  }
+
+  private filterTopicsInMemory(
+    topics: Record<string, unknown> | undefined,
+    mainTopic?: string[],
+    subTopic?: string[],
+  ): Record<string, unknown> | undefined {
+    if (!topics || typeof topics !== 'object' || Array.isArray(topics)) return undefined;
+    if ((!mainTopic || mainTopic.length === 0) && (!subTopic || subTopic.length === 0)) {
+      return topics;
+    }
+
+    const filteredResult: Record<string, unknown> = {};
+
+    for (const [mainTopicKey, subTopics] of Object.entries(topics)) {
+      const includeMain = !mainTopic?.length
+        || mainTopic.some((item) => item.toLowerCase() === mainTopicKey.toLowerCase());
+
+      if (!includeMain) continue;
+
+      if (subTopics && typeof subTopics === 'object' && !Array.isArray(subTopics)) {
+        const filteredSubTopics: Record<string, unknown> = {};
+        for (const [subTopicKey, subTopicValue] of Object.entries(subTopics)) {
+          const includeSub = !subTopic?.length || subTopic.some((item) => {
+            if (item.includes('.')) {
+              return item.toLowerCase() === `${mainTopicKey.toLowerCase()}.${subTopicKey.toLowerCase()}`;
+            }
+            return item.toLowerCase() === subTopicKey.toLowerCase();
+          });
+
+          if (includeSub) {
+            filteredSubTopics[subTopicKey] = subTopicValue;
+          }
+        }
+
+        if (Object.keys(filteredSubTopics).length > 0 || !subTopic?.length) {
+          filteredResult[mainTopicKey] = filteredSubTopics;
+        }
+        continue;
+      }
+
+      filteredResult[mainTopicKey] = subTopics;
+    }
+
+    return filteredResult;
+  }
+
+  async getProfiles(options: {
+    userId?: string;
+    fuzzy?: boolean;
+    mainTopic?: string[];
+    subTopic?: string[];
+    topicValue?: string[];
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<UserProfile[]> {
     let sql = 'SELECT * FROM user_profiles';
     const params: unknown[] = [];
-    if (options.userId) { sql += ' WHERE user_id = ?'; params.push(options.userId); }
-    sql += ' ORDER BY id DESC';
-    if (options.limit) { sql += ' LIMIT ?'; params.push(options.limit); }
-    if (options.offset) { sql += ' OFFSET ?'; params.push(options.offset); }
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
-    let profiles = rows.map((r) => this.toProfile(r));
-
-    if (options.mainTopic) {
-      profiles = profiles.filter((p) => p.topics && options.mainTopic! in (p.topics as Record<string, unknown>));
+    if (options.userId) {
+      if (options.fuzzy) {
+        sql += ' WHERE user_id LIKE ?';
+        params.push(`%${options.userId}%`);
+      } else {
+        sql += ' WHERE user_id = ?';
+        params.push(options.userId);
+      }
     }
+
+    sql += ' ORDER BY id DESC';
+
+    const rows = this.db.prepare(sql).all(...params) as ProfileRow[];
+    let profiles = rows
+      .map((row) => this.toProfile(row))
+      .filter((profile) => this.matchesFilters(profile.topics, options))
+      .map((profile) => ({
+        ...profile,
+        topics: this.filterTopicsInMemory(profile.topics, options.mainTopic, options.subTopic),
+      }));
+
+    if (options.offset && options.offset > 0) {
+      profiles = profiles.slice(options.offset);
+    }
+    if (options.limit && options.limit > 0) {
+      profiles = profiles.slice(0, options.limit);
+    }
+
     return profiles;
   }
 
@@ -84,9 +230,11 @@ export class SQLiteUserProfileStore extends UserProfileStoreBase {
     return result.changes > 0;
   }
 
-  async countProfiles(userId?: string): Promise<number> {
+  async countProfiles(userId?: string, fuzzy = false): Promise<number> {
     if (userId) {
-      const row = this.db.prepare('SELECT COUNT(*) as cnt FROM user_profiles WHERE user_id = ?').get(userId) as { cnt: number };
+      const row = fuzzy
+        ? this.db.prepare('SELECT COUNT(*) as cnt FROM user_profiles WHERE user_id LIKE ?').get(`%${userId}%`) as { cnt: number }
+        : this.db.prepare('SELECT COUNT(*) as cnt FROM user_profiles WHERE user_id = ?').get(userId) as { cnt: number };
       return row.cnt;
     }
     const row = this.db.prepare('SELECT COUNT(*) as cnt FROM user_profiles').get() as { cnt: number };
@@ -97,7 +245,7 @@ export class SQLiteUserProfileStore extends UserProfileStoreBase {
     this.db.close();
   }
 
-  private toProfile(row: any): UserProfile {
+  private toProfile(row: ProfileRow): UserProfile {
     return {
       id: String(row.id),
       userId: row.user_id,

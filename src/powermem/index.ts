@@ -76,9 +76,16 @@ export { MemoryScope, AccessPermission, PrivacyLevel, MemoryType } from './agent
 
 export { UserMemory } from './user_memory/index.js';
 export { SQLiteUserProfileStore } from './user_memory/index.js';
+export { SeekDBUserProfileStore } from './user_memory/index.js';
 export { UserProfileStoreBase, UserProfileStoreFactory } from './user_memory/index.js';
 export { QueryRewriter } from './user_memory/index.js';
-export type { UserProfile, UserProfileStore } from './user_memory/index.js';
+export type {
+  UserProfile,
+  UserProfileStore,
+  UserMemoryAddOptions,
+  UserMemoryProfileListOptions,
+  ProfileType,
+} from './user_memory/index.js';
 
 export { TelemetryManager } from './core/telemetry.js';
 export { AuditLogger } from './core/audit.js';

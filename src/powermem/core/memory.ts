@@ -7,8 +7,9 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { loadEnvFile } from '../utils/env.js';
 import { autoConfig } from '../config_loader.js';
 import { parseMemoryConfig } from '../configs.js';
+import type { MemoryConfig } from '../configs.js';
 import { GraphStoreFactory, VectorStoreFactory } from '../storage/factory.js';
-import { createEmbeddings, createEmbeddingsFromEnv, createSparseEmbedder } from '../integrations/embeddings/factory.js';
+import { createEmbeddings, createEmbeddingsFromEnv } from '../integrations/embeddings/factory.js';
 import { createLLM, createLLMFromEnv } from '../integrations/llm/factory.js';
 import { createRerankerFnFromConfig } from '../integrations/rerank/factory.js';
 import type { VectorStore, VectorStoreFilter, VectorStoreRecord, GraphStoreBase } from '../storage/base.js';
@@ -35,6 +36,7 @@ import { createIntelligencePlugin, type IntelligencePlugin } from '../intelligen
 import { StorageAdapter } from '../storage/adapter.js';
 import { MemoryOptimizer } from '../intelligence/memory-optimizer.js';
 import { calculateStatsFromMemories } from '../utils/stats.js';
+import { getCurrentDatetimeIsoformat, setPayloadTimezoneFromConfig } from '../utils/payload-datetime.js';
 import { extractTextFromContent, hasVisionContent, hasAudioContent, parseVisionMessages, parseAudioMessages } from '../utils/messages.js';
 import { ErrorCode, PowerMemError } from '../errors/index.js';
 import { MemoryBase } from './base.js';
@@ -53,10 +55,6 @@ function md5(content: string): string {
   return crypto.createHash('md5').update(content, 'utf-8').digest('hex');
 }
 
-function nowISO(): string {
-  return new Date().toISOString();
-}
-
 function removeCodeBlocks(content: string): string {
   const trimmed = content.trim();
   const match = trimmed.match(/^```[a-zA-Z0-9]*\n([\s\S]*?)\n```$/);
@@ -71,6 +69,21 @@ function ensureParentDir(dbPath: string): void {
   }
 }
 
+function asMetadataRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { ...(value as Record<string, unknown>) };
+}
+
+function getMetadataScope(metadata: Record<string, unknown> | undefined): string | undefined {
+  const scope = metadata?.scope;
+  return typeof scope === 'string' && scope.length > 0 ? scope : undefined;
+}
+
+function getMetadataAccessCount(metadata: Record<string, unknown> | undefined): number {
+  const accessCount = metadata?.access_count;
+  return typeof accessCount === 'number' && Number.isFinite(accessCount) ? accessCount : 0;
+}
+
 function toMemoryRecord(rec: VectorStoreRecord): MemoryRecord {
   return {
     id: rec.id,
@@ -79,6 +92,7 @@ function toMemoryRecord(rec: VectorStoreRecord): MemoryRecord {
     userId: rec.userId,
     agentId: rec.agentId,
     runId: rec.runId,
+    actorId: rec.actorId,
     metadata: rec.metadata,
     createdAt: rec.createdAt,
     updatedAt: rec.updatedAt,
@@ -101,6 +115,7 @@ export class Memory extends MemoryBase {
   private readonly llmInstance?: BaseChatModel;
   private readonly idGen = new SnowflakeIDGenerator();
   private readonly config: Config;
+  private readonly runtimeConfig: MemoryConfig;
   private readonly intelligenceManager?: IntelligenceManager;
   private readonly intelligencePlugin?: IntelligencePlugin;
   private readonly graphStore?: GraphStoreBase;
@@ -123,6 +138,7 @@ export class Memory extends MemoryBase {
     auditLogger?: AuditLogger,
     customFactExtractionPrompt?: string,
     customUpdateMemoryPrompt?: string,
+    runtimeConfig?: MemoryConfig,
   ) {
     super();
     this.store = store;
@@ -136,6 +152,7 @@ export class Memory extends MemoryBase {
     this.auditLogger = auditLogger ?? new AuditLogger();
     this.customFactExtractionPrompt = customFactExtractionPrompt;
     this.customUpdateMemoryPrompt = customUpdateMemoryPrompt;
+    this.runtimeConfig = runtimeConfig ?? parseMemoryConfig({});
     this.config = {
       fallbackToSimpleAdd: config?.fallbackToSimpleAdd ?? false,
       reranker: config?.reranker,
@@ -153,24 +170,18 @@ export class Memory extends MemoryBase {
 
     const rawConfig = options.config ?? autoConfig();
     const config = parseMemoryConfig(rawConfig);
-
-    let sparseEmbedder: Awaited<ReturnType<typeof createSparseEmbedder>> | undefined;
-    if (config.sparseEmbedder?.provider) {
-      try {
-        sparseEmbedder = await createSparseEmbedder({
-          provider: config.sparseEmbedder.provider,
-          ...(config.sparseEmbedder.config as Record<string, unknown>),
-        } as Parameters<typeof createSparseEmbedder>[0]);
-      } catch {
-        // Sparse embedder stays optional.
-      }
-    }
+    setPayloadTimezoneFromConfig(config.timezone?.timezone);
 
     let store: VectorStore | undefined;
     if (options.store) {
       store = options.store;
     } else if (options.dbPath) {
       ensureParentDir(options.dbPath);
+      config.vectorStore.provider = 'sqlite';
+      config.vectorStore.config = {
+        ...(config.vectorStore.config as Record<string, unknown>),
+        path: options.dbPath,
+      };
       store = new SQLiteStore(options.dbPath);
     } else if (config.vectorStore.provider === 'sqlite') {
       const configuredPath = config.vectorStore.config.path;
@@ -181,7 +192,6 @@ export class Memory extends MemoryBase {
       try {
         store = await VectorStoreFactory.create(config.vectorStore.provider, {
           ...(config.vectorStore.config as Record<string, unknown>),
-          ...(sparseEmbedder ? { sparseEmbedder } : {}),
         });
       } catch {
         const dbPath = './data/powermem_dev.db';
@@ -281,6 +291,7 @@ export class Memory extends MemoryBase {
       new AuditLogger(config.audit ?? {}),
       options.customFactExtractionPrompt ?? config.customFactExtractionPrompt ?? undefined,
       options.customUpdateMemoryPrompt ?? config.customUpdateMemoryPrompt ?? undefined,
+      config,
     );
     memory.telemetryManager.captureEvent('memory.init', {
       vectorStore: config.vectorStore.provider,
@@ -297,29 +308,89 @@ export class Memory extends MemoryBase {
     return this.store;
   }
 
+  private normalizePayloadParams(params: {
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata?: Record<string, unknown>;
+    scope?: string;
+    category?: string;
+  }, accessCount?: number): {
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
+    accessCount: number;
+  } {
+    const metadata = asMetadataRecord(params.metadata);
+
+    let actorId = params.actorId;
+    if (!actorId && typeof metadata.actor_id === 'string') {
+      actorId = metadata.actor_id;
+    }
+    delete metadata.actor_id;
+
+    let category = params.category;
+    if (!category && typeof metadata.category === 'string') {
+      category = metadata.category;
+    }
+    delete metadata.category;
+
+    if (params.scope !== undefined) {
+      metadata.scope = params.scope;
+    }
+
+    const normalizedAccessCount = typeof accessCount === 'number' && Number.isFinite(accessCount)
+      ? accessCount
+      : getMetadataAccessCount(metadata);
+    metadata.access_count = normalizedAccessCount;
+
+    return {
+      userId: params.userId,
+      agentId: params.agentId,
+      runId: params.runId,
+      actorId,
+      metadata,
+      category,
+      accessCount: normalizedAccessCount,
+    };
+  }
+
   private buildPayload(content: string, params: {
-    userId?: string; agentId?: string; runId?: string;
-    metadata?: Record<string, unknown>; scope?: string; category?: string;
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
   }, createdAt?: string): Record<string, unknown> {
-    const now = nowISO();
+    const now = getCurrentDatetimeIsoformat();
     return {
       data: content,
       user_id: params.userId ?? null,
       agent_id: params.agentId ?? null,
       run_id: params.runId ?? null,
+      actor_id: params.actorId ?? null,
       hash: md5(content),
       created_at: createdAt ?? now,
       updated_at: now,
-      scope: params.scope ?? null,
       category: params.category ?? null,
-      access_count: 0,
+      fulltext_content: content,
       metadata: params.metadata ?? {},
     };
   }
 
   private buildRecord(id: string, content: string, payload: Record<string, unknown>, params: {
-    userId?: string; agentId?: string; runId?: string;
-    metadata?: Record<string, unknown>; scope?: string; category?: string;
+    userId?: string;
+    agentId?: string;
+    runId?: string;
+    actorId?: string;
+    metadata: Record<string, unknown>;
+    category?: string;
+    accessCount?: number;
   }): MemoryRecord {
     return {
       id,
@@ -328,12 +399,13 @@ export class Memory extends MemoryBase {
       userId: params.userId,
       agentId: params.agentId,
       runId: params.runId,
+      actorId: params.actorId,
       metadata: params.metadata,
-      scope: params.scope,
+      scope: getMetadataScope(params.metadata),
       category: params.category,
       createdAt: payload.created_at as string,
       updatedAt: payload.updated_at as string,
-      accessCount: 0,
+      accessCount: params.accessCount ?? getMetadataAccessCount(params.metadata),
     };
   }
 
@@ -448,23 +520,74 @@ export class Memory extends MemoryBase {
     }
   }
 
-  private async addInternal(params: AddParams): Promise<AddResult> {
-    const shouldInfer = params.infer !== false && this.llmInstance != null;
-    return shouldInfer ? this.intelligentAdd(params) : this.simpleAdd(params);
+  /**
+   * Matches Python `Memory.add`: `use_infer = infer and isinstance(messages, list) and len(messages) > 0`
+   * after str is normalized to a one-element message list.
+   */
+  private usesIntelligentAddRoute(params: AddParams): boolean {
+    return (
+      params.infer !== false &&
+      (typeof params.content === 'string' ||
+        (Array.isArray(params.content) && params.content.length > 0))
+    );
   }
 
-  private async simpleAdd(params: AddParams): Promise<AddResult> {
-    const id = this.idGen.nextId();
+  /**
+   * Without an LLM, default infer still uses simple add for non-empty content (see coverage-gaps test).
+   * Empty content on the intelligent *route* (Python `use_infer`) returns [] without calling the LLM.
+   */
+  private async addInternal(params: AddParams): Promise<{
+    result: AddResult;
+    auditIntelligentPath: boolean;
+  }> {
     const textContent = await this.resolveTextContent(params.content);
+    const onIntelligentRoute = this.usesIntelligentAddRoute(params);
+
+    if (textContent.trim().length === 0 && !onIntelligentRoute) {
+      throw new Error(
+        'Cannot add memory: content is empty. Provide non-whitespace text, or messages that include text (infer=false still requires resolvable text to embed).',
+      );
+    }
+
+    if (onIntelligentRoute && this.llmInstance) {
+      const result = await this.intelligentAdd(params, textContent);
+      return { result, auditIntelligentPath: true };
+    }
+
+    if (onIntelligentRoute && textContent.trim().length === 0) {
+      if (this.config.fallbackToSimpleAdd) {
+        const result = await this.simpleAdd(params, textContent);
+        return { result, auditIntelligentPath: false };
+      }
+      return {
+        result: {
+          memories: [],
+          message: 'No memories were created (no facts extracted)',
+        },
+        auditIntelligentPath: true,
+      };
+    }
+
+    const result = await this.simpleAdd(params, textContent);
+    return { result, auditIntelligentPath: false };
+  }
+
+  private async simpleAdd(params: AddParams, textContent: string): Promise<AddResult> {
+    const id = this.idGen.nextId();
     const embedding = await this.embedder.embed(textContent);
     const enrichedMetadata = this.intelligencePlugin?.processMetadata
       ? this.intelligencePlugin.processMetadata(textContent, params.metadata ?? {})
       : this.intelligenceManager
         ? this.intelligenceManager.processMetadata(textContent, params.metadata)
         : params.metadata;
-    const enrichedParams = { ...params, metadata: enrichedMetadata };
+    const enrichedParams = this.normalizePayloadParams({ ...params, metadata: enrichedMetadata });
     const payload = this.buildPayload(textContent, enrichedParams);
-    const targetStore = this.resolveStore({ userId: params.userId, agentId: params.agentId, scope: params.scope, metadata: enrichedMetadata });
+    const targetStore = this.resolveStore({
+      userId: params.userId,
+      agentId: params.agentId,
+      scope: params.scope,
+      metadata: enrichedParams.metadata,
+    });
     await targetStore.insert(id, embedding, payload);
     if (this.graphStore) {
       try {
@@ -479,11 +602,15 @@ export class Memory extends MemoryBase {
     };
   }
 
-  private async intelligentAdd(params: AddParams): Promise<AddResult> {
-    const textContent = await this.resolveTextContent(params.content);
+  private async intelligentAdd(params: AddParams, textContent: string): Promise<AddResult> {
+    if (textContent.trim().length === 0) {
+      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params, textContent);
+      return { memories: [], message: 'No memories were created (no facts extracted)' };
+    }
+
     const facts = await this.extractFacts(textContent);
     if (facts.length === 0) {
-      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params);
+      if (this.config.fallbackToSimpleAdd) return this.simpleAdd(params, textContent);
       return { memories: [], message: 'No memories were created (no facts extracted)' };
     }
 
@@ -514,9 +641,10 @@ export class Memory extends MemoryBase {
       for (const fact of facts) {
         const id = this.idGen.nextId();
         const embedding = await this.embedder.embed(fact);
-        const payload = this.buildPayload(fact, params);
+        const normalizedParams = this.normalizePayloadParams(params);
+        const payload = this.buildPayload(fact, normalizedParams);
         await this.store.insert(id, embedding, payload);
-        memories.push(this.buildRecord(id, fact, payload, params));
+        memories.push(this.buildRecord(id, fact, payload, normalizedParams));
       }
       return {
         memories,
@@ -537,18 +665,23 @@ export class Memory extends MemoryBase {
         case 'ADD': {
           const id = this.idGen.nextId();
           const embedding = await this.embedder.embed(action.text);
-          const payload = this.buildPayload(action.text, params);
+          const normalizedParams = this.normalizePayloadParams(params);
+          const payload = this.buildPayload(action.text, normalizedParams);
           await this.store.insert(id, embedding, payload);
-          resultMemories.push(this.buildRecord(id, action.text, payload, params));
+          resultMemories.push(this.buildRecord(id, action.text, payload, normalizedParams));
           break;
         }
         case 'UPDATE': {
           const realId = tempToReal.get(action.id) ?? action.id;
           const existing = await this.store.getById(realId);
           const embedding = await this.embedder.embed(action.text);
-          const payload = this.buildPayload(action.text, params, existing?.createdAt);
+          const normalizedParams = this.normalizePayloadParams({
+            ...params,
+            actorId: existing?.actorId,
+          }, existing?.accessCount);
+          const payload = this.buildPayload(action.text, normalizedParams, existing?.createdAt);
           await this.store.update(realId, embedding, payload);
-          resultMemories.push(this.buildRecord(realId, action.text, payload, params));
+          resultMemories.push(this.buildRecord(realId, action.text, payload, normalizedParams));
           break;
         }
         case 'DELETE': {
@@ -562,7 +695,7 @@ export class Memory extends MemoryBase {
     }
 
     if (resultMemories.length === 0 && this.config.fallbackToSimpleAdd) {
-      return this.simpleAdd(params);
+      return this.simpleAdd(params, textContent);
     }
 
     return {
@@ -626,7 +759,13 @@ export class Memory extends MemoryBase {
       memoryId: match.id,
       content: match.content,
       score: match.score,
+      userId: match.userId,
+      agentId: match.agentId,
+      runId: match.runId,
+      actorId: match.actorId,
       metadata: match.metadata,
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt,
     }));
 
     if (this.config.reranker) {
@@ -657,19 +796,17 @@ export class Memory extends MemoryBase {
       embedding = await this.embedder.embed(content);
     }
 
-    const payload: Record<string, unknown> = {
-      data: content,
-      user_id: existing.userId ?? null,
-      agent_id: existing.agentId ?? null,
-      run_id: existing.runId ?? null,
-      hash: md5(content),
-      created_at: existing.createdAt,
-      updated_at: nowISO(),
-      scope: existing.scope ?? null,
-      category: existing.category ?? null,
-      access_count: existing.accessCount ?? 0,
-      metadata: metadata ?? {},
-    };
+    const normalizedParams = this.normalizePayloadParams({
+      userId: existing.userId,
+      agentId: existing.agentId,
+      runId: existing.runId,
+      actorId: existing.actorId,
+      metadata,
+      scope: existing.scope,
+      category: existing.category,
+    }, existing.accessCount);
+    const payload = this.buildPayload(content, normalizedParams, existing.createdAt);
+    payload.updated_at = getCurrentDatetimeIsoformat();
 
     await this.store.update(memoryId, embedding, payload);
 
@@ -680,12 +817,13 @@ export class Memory extends MemoryBase {
       userId: existing.userId,
       agentId: existing.agentId,
       runId: existing.runId,
-      metadata,
-      scope: existing.scope,
-      category: existing.category,
+      actorId: existing.actorId,
+      metadata: normalizedParams.metadata,
+      scope: getMetadataScope(normalizedParams.metadata),
+      category: normalizedParams.category,
       createdAt: existing.createdAt,
       updatedAt: payload.updated_at as string,
-      accessCount: existing.accessCount,
+      accessCount: normalizedParams.accessCount,
     };
   }
 
@@ -701,16 +839,16 @@ export class Memory extends MemoryBase {
         : contentOrParams
     );
     try {
-      const result = await this.addInternal(params);
+      const { result, auditIntelligentPath } = await this.addInternal(params);
       this.logAuditEvent(
-        params.infer !== false && this.llmInstance ? 'memory.intelligent_add' : 'memory.add',
+        auditIntelligentPath ? 'memory.intelligent_add' : 'memory.add',
         { createdCount: result.memories.length },
         params.userId,
         params.agentId,
       );
       this.captureTelemetryEvent(
         'memory.add',
-        { createdCount: result.memories.length, infer: params.infer !== false },
+        { createdCount: result.memories.length, infer: auditIntelligentPath },
         params.userId,
         params.agentId,
       );
@@ -844,6 +982,16 @@ export class Memory extends MemoryBase {
     await this.store.close();
   }
 
+  getStorageType(): string {
+    if (this.store instanceof SQLiteStore) return 'sqlite';
+
+    const ctorName = this.store.constructor?.name?.toLowerCase() ?? '';
+    if (ctorName.includes('seekdb')) return 'seekdb';
+    if (ctorName.includes('pgvector')) return 'pgvector';
+    if (ctorName.includes('oceanbase')) return 'oceanbase';
+    return ctorName || 'unknown';
+  }
+
   async getStatistics(options: FilterParams = {}): Promise<Record<string, unknown>> {
     const adapter = new StorageAdapter(this.store);
     const filters: VectorStoreFilter = { userId: options.userId, agentId: options.agentId, runId: options.runId };
@@ -856,6 +1004,14 @@ export class Memory extends MemoryBase {
   async getUsers(limit = 1000): Promise<string[]> {
     const adapter = new StorageAdapter(this.store);
     return adapter.getUniqueUsers(limit);
+  }
+
+  getLLMInstance(): BaseChatModel | undefined {
+    return this.llmInstance;
+  }
+
+  getRuntimeConfig(): MemoryConfig {
+    return this.runtimeConfig;
   }
 
   async optimize(strategy: string = 'exact', userId?: string, threshold = 0.95): Promise<Record<string, unknown>> {

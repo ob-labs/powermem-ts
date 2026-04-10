@@ -11,6 +11,9 @@ function parseBool(val: string | undefined, def: boolean): boolean {
 export interface ServerConfig {
   host: string;
   port: number;
+  workers: number;
+  reload: boolean;
+  logLevel: string;
   authEnabled: boolean;
   apiKeys: string[];
   rateLimitEnabled: boolean;
@@ -24,6 +27,9 @@ export function loadServerConfig(): ServerConfig {
   return {
     host: process.env.POWERMEM_SERVER_HOST ?? '0.0.0.0',
     port: parseInt(process.env.POWERMEM_SERVER_PORT ?? process.env.PORT ?? '8000', 10),
+    workers: parseInt(process.env.POWERMEM_SERVER_WORKERS ?? '1', 10),
+    reload: parseBool(process.env.POWERMEM_SERVER_RELOAD, false),
+    logLevel: process.env.POWERMEM_SERVER_LOG_LEVEL ?? 'info',
     authEnabled: parseBool(process.env.POWERMEM_SERVER_AUTH_ENABLED, false),
     apiKeys: apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean),
     rateLimitEnabled: parseBool(process.env.POWERMEM_SERVER_RATE_LIMIT_ENABLED, false),

@@ -5,7 +5,11 @@
  */
 import express from 'express';
 import { Memory } from '../powermem/core/memory.js';
+import { UserMemory } from '../powermem/user_memory/user_memory.js';
 import type { Embeddings } from '@langchain/core/embeddings';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { MemoryConfigInput } from '../powermem/configs.js';
+import type { MemoryOptions } from '../powermem/types/options.js';
 import { VERSION } from '../powermem/version.js';
 import { loadServerConfig, type ServerConfig } from './config.js';
 import { createAuthMiddleware } from './middleware/auth.js';
@@ -23,15 +27,27 @@ export interface ServerAppOptions {
   port?: number;
   dbPath?: string;
   embeddings?: Embeddings;
+  llm?: BaseChatModel;
   memory?: Memory;
+  userMemory?: UserMemory;
+  memoryConfig?: MemoryConfigInput;
   config?: Partial<ServerConfig>;
 }
 
 export interface ServerServices {
-  memoryService: MemoryService;
-  searchService: SearchService;
-  userService: UserService;
-  agentService: AgentService;
+  memoryService: MemoryService | null;
+  searchService: SearchService | null;
+  userService: UserService | null;
+  agentService: AgentService | null;
+}
+
+function buildSharedMemoryOptions(options: ServerAppOptions): MemoryOptions {
+  return {
+    ...(options.dbPath !== undefined ? { dbPath: options.dbPath } : {}),
+    ...(options.embeddings ? { embeddings: options.embeddings } : {}),
+    ...(options.llm ? { llm: options.llm } : {}),
+    ...(options.memoryConfig ? { config: options.memoryConfig } : {}),
+  };
 }
 
 export async function createServerApp(options: ServerAppOptions = {}) {
@@ -57,17 +73,58 @@ export async function createServerApp(options: ServerAppOptions = {}) {
   app.use(createAuthMiddleware(config));
   app.use(createRateLimitMiddleware(config));
 
-  // ─── Memory instance ──────────────────────────────────────────────
-  const memory = options.memory ?? await Memory.create({
-    dbPath: options.dbPath ?? ':memory:',
-    embeddings: options.embeddings,
-  });
+  const memoryOptions = buildSharedMemoryOptions(options);
+  const initializeService = async <T>(factory: () => Promise<T>, serviceName: string): Promise<T | null> => {
+    try {
+      return await factory();
+    } catch (error) {
+      console.error(`${serviceName} initialization failed`, error);
+      return null;
+    }
+  };
+
+  const userService = await initializeService(
+    () => UserService.create({
+      userMemory: options.userMemory,
+      memory: options.memory,
+      memoryOptions,
+      config: options.memoryConfig,
+    }),
+    'UserService',
+  );
+  const memoryService = await initializeService(
+    () => MemoryService.create({
+      memory: options.memory,
+      memoryOptions,
+      config: options.memoryConfig,
+    }),
+    'MemoryService',
+  );
+  const searchService = await initializeService(
+    () => SearchService.create({
+      memory: options.memory,
+      memoryOptions,
+      config: options.memoryConfig,
+    }),
+    'SearchService',
+  );
+  const agentService = await initializeService(
+    () => AgentService.create({
+      memory: options.memory,
+      memoryOptions,
+      config: options.memoryConfig,
+    }),
+    'AgentService',
+  );
+
+  const memory = memoryService?.getMemory();
+  const userMemory = userService?.getUserMemory();
   const startTime = Date.now();
   const services: ServerServices = {
-    memoryService: new MemoryService(memory),
-    searchService: new SearchService(memory),
-    userService: new UserService(memory),
-    agentService: new AgentService(memory),
+    memoryService,
+    searchService,
+    userService,
+    agentService,
   };
 
   // ─── Routers ───────────────────────────────────────────────────────
@@ -102,5 +159,21 @@ export async function createServerApp(options: ServerAppOptions = {}) {
     res.type('text/plain').send('User-agent: *\nDisallow: /\n');
   });
 
-  return { app, memory, services };
+  const close = async () => {
+    const closers: Array<Promise<void>> = [];
+
+    if (!options.memory) {
+      if (services.agentService) closers.push(services.agentService.close());
+      if (services.searchService) closers.push(services.searchService.close());
+      if (services.memoryService) closers.push(services.memoryService.close());
+    }
+
+    if (!options.userMemory && !options.memory) {
+      if (services.userService) closers.push(services.userService.close());
+    }
+
+    await Promise.allSettled(closers);
+  };
+
+  return { app, memory, userMemory, services, close };
 }

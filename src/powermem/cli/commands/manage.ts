@@ -4,6 +4,7 @@
 import type { Command } from 'commander';
 import fs from 'node:fs';
 import { formatJson } from '../utils/output.js';
+import { getCurrentDatetimeIsoformat } from '../../utils/payload-datetime.js';
 
 export function registerManageCommands(program: Command): void {
   const manage = program
@@ -31,16 +32,17 @@ export function registerManageCommands(program: Command): void {
           limit: parseInt(opts.limit, 10),
         });
 
+        const stamp = getCurrentDatetimeIsoformat();
         const backup = {
           version: '1.0',
-          createdAt: new Date().toISOString(),
+          createdAt: stamp,
           filters: { userId: opts.userId, agentId: opts.agentId },
           count: result.memories.length,
           memories: result.memories,
         };
 
         const outputPath = opts.output ??
-          `powermem_backup_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+          `powermem_backup_${stamp.replace(/[:.]/g, '-').slice(0, 19)}.json`;
 
         fs.writeFileSync(outputPath, JSON.stringify(backup, null, 2));
 
