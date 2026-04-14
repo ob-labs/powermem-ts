@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * PowerMem CLI — main entry point.
  * Port of Python powermem/cli/main.py using Commander.js.

@@ -50,7 +50,7 @@ describe('BDD: REST API', () => {
       const res = await fetch(`${baseUrl}/system/status`);
       const json = await res.json();
       expect(json.success).toBe(true);
-      expect(json.data.version).toBe('0.1.0');
+      expect(json.data.version).toBe('0.1.1');
       expect(json.data.storageType).toBe('sqlite');
       expect(json.data.status).toBe('running');
       expect(typeof json.data.uptime).toBe('number');

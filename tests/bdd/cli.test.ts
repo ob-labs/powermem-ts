@@ -181,6 +181,13 @@ describe('Feature: Memory CRUD', () => {
     expect(output).toContain('--order');
   });
 
+  it('Scenario: memory delete --help shows scope options (OpenClaw pmem compat)', () => {
+    const output = run('memory delete --help');
+    expect(output).toContain('--user-id');
+    expect(output).toContain('--agent-id');
+    expect(output).toContain('--yes');
+  });
+
   it('Scenario: memory delete-all requires --confirm', () => {
     const output = run('memory delete-all');
     expect(output).toContain('--confirm');

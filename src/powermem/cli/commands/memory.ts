@@ -156,11 +156,54 @@ export function registerMemoryCommands(program: Command): void {
   memory
     .command('delete <id>')
     .description('Delete a memory by ID')
-    .action(async (id: string) => {
+    .option('-u, --user-id <id>', 'Require memory to match this user_id before delete (OpenClaw / pmem compat)')
+    .option('-a, --agent-id <id>', 'Require memory to match this agent_id before delete')
+    .option('-y, --yes', 'Non-interactive delete (compat; no extra prompt)')
+    .action(async (id: string, opts) => {
       const mem = await getMemory(program);
       try {
+        const wantUserId = typeof opts.userId === 'string' ? opts.userId.trim() : '';
+        const wantAgentId = typeof opts.agentId === 'string' ? opts.agentId.trim() : '';
+        const needScopeCheck = wantUserId.length > 0 || wantAgentId.length > 0;
+
+        if (needScopeCheck) {
+          const rec = await mem.get(id);
+          if (!rec) {
+            if (program.opts().json) {
+              console.log(JSON.stringify({ deleted: false, message: 'Not found.' }, null, 2));
+            } else {
+              console.log('Not found.');
+            }
+            return;
+          }
+          if (wantUserId && rec.userId !== wantUserId) {
+            const msg = 'Memory user_id does not match --user-id.';
+            if (program.opts().json) {
+              console.log(JSON.stringify({ deleted: false, error: 'scope_mismatch', message: msg }, null, 2));
+            } else {
+              console.error(msg);
+            }
+            process.exitCode = 1;
+            return;
+          }
+          if (wantAgentId && rec.agentId !== wantAgentId) {
+            const msg = 'Memory agent_id does not match --agent-id.';
+            if (program.opts().json) {
+              console.log(JSON.stringify({ deleted: false, error: 'scope_mismatch', message: msg }, null, 2));
+            } else {
+              console.error(msg);
+            }
+            process.exitCode = 1;
+            return;
+          }
+        }
+
         const ok = await mem.delete(id);
-        console.log(ok ? 'Deleted.' : 'Not found.');
+        if (program.opts().json) {
+          console.log(JSON.stringify({ deleted: ok, memoryId: id }, null, 2));
+        } else {
+          console.log(ok ? 'Deleted.' : 'Not found.');
+        }
       } finally {
         await mem.close();
       }

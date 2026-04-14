@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import type { Embeddings } from '@langchain/core/embeddings';
 import { createServerApp } from '../main.js';
 import { loadServerConfig } from '../config.js';
