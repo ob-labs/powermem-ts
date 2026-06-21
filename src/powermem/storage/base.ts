@@ -74,6 +74,17 @@ export interface VectorStore {
   incrementAccessCountBatch(ids: string[]): Promise<void>;
   removeAll(filters?: VectorStoreFilter): Promise<void>;
   close(): Promise<void>;
+  // ─── Optional DDL methods (round 4 parity with Python VectorStoreBase) ────
+  // These are optional in TS because not all backends (e.g. embedded SQLite
+  // with auto-created tables) need explicit DDL. Python's VectorStoreBase
+  // (storage/base.py:18) requires them; TS leaves them as optional so
+  // concrete stores can opt in. Memory.reset() checks `typeof store.reset`
+  // before invoking.
+  createCol?(): Promise<void>;
+  listCols?(): Promise<string[]>;
+  deleteCol?(): Promise<void>;
+  colInfo?(): Promise<Record<string, unknown>>;
+  reset?(): Promise<void>;
 }
 
 /**
